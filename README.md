@@ -28,16 +28,15 @@ sudo apt-get update
 ## Install the basic dependancies
 
 ```bash
+# Adapt your desired python version here
 sudo apt build-dep robotpkg-py38-pinocchio
 sudo apt install robotpkg-py38-casadi robotpkg-py38-eigenpy python3-pip
-pip install 
 ```
 
 Install python dependancies
 ```bash
 python3 -m pip install --upgrade --user pip
-python3 -m pip install --upgrade --user meshcat
-python3 -m pip install --upgrade --user jupyterlab
+python3 -m pip install --upgrade --user meshcat jupyterlab
 ```
 
 ## Configure your environment
