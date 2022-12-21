@@ -31,12 +31,18 @@ opti = casadi.Opti()
 w = opti.variable(3)
 R = exp3(w)
 
-# Beware: casadi matrix product is *, numpy matrix product is @
-totalcost = 0.5 * casadi.sumsqr(R * p - pdes)
+# Beware: casadi matrix product is @ like numpy array product
+totalcost = 0.5 * casadi.sumsqr(R @ p - pdes)
 
 # ## SOLVE
 opti.minimize(totalcost)
 opti.solver("ipopt")
+
+# Initial guess with optimal solution for debug
+R0=pin.Quaternion.FromTwoVectors(p,pdes).matrix()
+w0=pin.log3(R0)
+# Uncomment if you want the warm start opti.set_initial(w,w0)
+
 sol = opti.solve()
 
 # The value of the decision variable at the optimum are stored in 2 arrays.
