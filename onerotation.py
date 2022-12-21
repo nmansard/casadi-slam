@@ -41,7 +41,8 @@ opti.solver("ipopt")
 # Initial guess with optimal solution for debug
 R0=pin.Quaternion.FromTwoVectors(p,pdes).matrix()
 w0=pin.log3(R0)
-# Uncomment if you want the warm start opti.set_initial(w,w0)
+# Uncomment if you want the warm start 
+opti.set_initial(w,w0)
 
 sol = opti.solve()
 
