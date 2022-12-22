@@ -48,6 +48,7 @@ sol = opti.solve()
 # The value of the decision variable at the optimum are stored in 2 arrays.
 w_sol = opti.value(w)
 R_sol = opti.value(R)
+totalcost_sol = opti.value(totalcost)
 
 # ## Sanity check
 assert np.allclose(R_sol @ R_sol.T, np.eye(3))
