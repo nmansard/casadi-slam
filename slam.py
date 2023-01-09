@@ -15,10 +15,21 @@ cR = casadi.SX.sym("R", 3, 3)
 exp3 = casadi.Function("exp3", [cw], [cpin.exp3(cw)])
 log3 = casadi.Function("logp3", [cR], [cpin.log3(cR)])
 
+# s is the 3-vector
+# S is a skew-symmetric matrix built from s
+def hat(s):
+    S = np.array([[0, -s(2), s(1)], [s(2), 0, -s(0)], [-s(1), s(0), 0]])
+    return S
+
+# S is a skew-symmetric matrix
+# s is the 3-vector extracted from S
 def wedge(S):
     s = np.array([S(2,1), S(0,2), S(1,0)])
     return s
-def log3(R)
+    
+# R is a rotation matrix not far from the identity
+# w is the approximated rotation vector equivalent to R
+def log3_approx(R):
     w = wedge(R - R.T) / 2
     return w
 
