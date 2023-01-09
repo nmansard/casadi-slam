@@ -8,7 +8,7 @@ Display the result in Meshcat.
 
 import casadi
 import pinocchio as pin
-from pinocchio import casadi as cpin
+from casadi_so3 import exp3,log3
 from pinocchio.utils import rotate
 import numpy as np
 import time
@@ -19,15 +19,6 @@ omega = 2*np.pi*.5
 pdes = [ rotate('x',t)@rotate('y',2*t-5)@ ((1+.2*np.sin(t*omega))*p)
          for t in np.arange(0,5,.02) ]
 T = len(pdes)
-    
-
-# ## CASADI HELPER FUNCTIONS
-cw = casadi.SX.sym("w", 3, 1)
-cR = casadi.SX.sym("R", 3, 3)
-
-exp3 = casadi.Function("exp3", [cw], [cpin.exp3(cw)])
-log3 = casadi.Function("logp3", [cR], [cpin.log3(cR)])
-
 
 # ## PROBLEM
 # Create the casadi optimization problem
