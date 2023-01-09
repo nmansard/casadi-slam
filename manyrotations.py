@@ -37,17 +37,32 @@ opti = casadi.Opti()
 ws = [ opti.variable(3) for t in range(T) ]
 Rs = [ exp3(w) for w in ws ]
 
-# Beware: casadi matrix product is @ like numpy array product
-totalcost = 0
+def new_func(p, pdes, T, ws, Rs):
+    totalcost = 0
 
-for t in range(T):
-    totalcost += 0.5 * casadi.sumsqr(Rs[t] @ p - pdes[t])
-    if t>0:
-        totalcost += 0.5 * casadi.sumsqr( log3(Rs[t-1].T@Rs[t]) )
+    # Beware: casadi matrix product is @ like numpy array product
+    for t in range(T):
+        totalcost += 0.5 * casadi.sumsqr(Rs[t] @ p - pdes[t])
+        if t>0:
+        # totalcost += 0.5 * casadi.sumsqr( log3(Rs[t-1].T @ Rs[t]) )
+            totalcost += 0.5 * casadi.sumsqr( ws[t] - ws[t-1])
+    return totalcost
+
+totalcost = new_func(p, pdes, T, ws, Rs) 
 
 # ## SOLVE
 opti.minimize(totalcost)
 opti.solver("ipopt")
+
+# # Initial guess with optimal solution for debug
+# R0s=[pin.Quaternion.FromTwoVectors(p,pd).matrix() for pd in pdes]
+# w0s=[pin.log3(R) for R in R0s]
+# # Uncomment if you want the warm start 
+# opti.set_initial(ws,w0s)
+
+# Warm start
+for t in range(T):
+    opti.set_initial(ws[t],np.array([.1,.1,.1]))
 
 sol = opti.solve()
 
