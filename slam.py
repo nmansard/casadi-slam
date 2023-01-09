@@ -54,7 +54,12 @@ def cost_motion(meas, sqrt_info, keyframe_i, keyframe_j):
 
 # TODO
 def cost_landmark(meas, sqrt_info, keyframe_i, landmark_j):
-    return 0
+    ppred = landmark_j.p - keyframe_i.p
+    wpred = log3(exp3(-keyframe_i.w) @ exp3(landmark_j.w)) # log ( Ri.T * Rj )
+    pred  = casadi.vertcat([ ppred, wpred ])
+
+    cost = casadi.sumsqr(sqrt_info @ (meas - pred)) 
+    return cost
 
 # TODO
 def cost_prior(meas, sqrt_info, keyframe_i):
