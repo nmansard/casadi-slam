@@ -15,6 +15,14 @@ cR = casadi.SX.sym("R", 3, 3)
 exp3 = casadi.Function("exp3", [cw], [cpin.exp3(cw)])
 log3 = casadi.Function("logp3", [cR], [cpin.log3(cR)])
 
+def wedge(S):
+    s = np.array([S(2,1), S(0,2), S(1,0)])
+    return s
+def log3(R)
+    w = wedge(R - R.T) / 2
+    return w
+
+
 def find_index(list, id):
     ids = [item.id for item in list]
     idx = ids.index(id)
@@ -63,7 +71,12 @@ def cost_landmark(meas, sqrt_info, keyframe_i, landmark_j):
 
 # TODO
 def cost_prior(meas, sqrt_info, keyframe_i):
-    return 0
+    ppred = landmark_j.p - keyframe_i.p
+    wpred = log3(exp3(-keyframe_i.w) @ exp3(landmark_j.w)) # log ( Ri.T * Rj )
+    pred  = casadi.vertcat([ ppred, wpred ])
+
+    cost = casadi.sumsqr(sqrt_info @ (meas - pred)) 
+    return cost
 
 
 # class for keyframes and landmarks
