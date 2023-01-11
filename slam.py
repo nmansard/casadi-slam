@@ -7,13 +7,11 @@ from pinocchio.utils import rotate
 import numpy as np
 import time
 from utils.meshcat_viewer_wrapper import MeshcatVisualizer
+import apriltag
+import cv2
 
-# ## CASADI HELPER FUNCTIONS
-cw = casadi.SX.sym("w", 3, 1)
-cR = casadi.SX.sym("R", 3, 3)
+# BASIC HELPER FUNCTIONS
 
-exp3 = casadi.Function("exp3", [cw], [cpin.exp3(cw)])
-log3 = casadi.Function("logp3", [cR], [cpin.log3(cR)])
 
 # s is a 3-vector
 # S is a skew-symmetric matrix built from s
@@ -39,6 +37,13 @@ def find_index(list, id):
     idx = ids.index(id)
     return idx
 
+# ## CASADI HELPER FUNCTIONS
+cw = casadi.SX.sym("w", 3, 1)
+cR = casadi.SX.sym("R", 3, 3)
+
+exp3 = casadi.Function("exp3", [cw], [cpin.exp3(cw)])
+#log3 = casadi.Function("logp3", [cR], [cpin.log3(cR)])
+log3 = casadi.Function("log3", [cR], [log3_approx(cR)])
 
 # data types
 #-----------
@@ -63,68 +68,80 @@ def find_index(list, id):
 opti = casadi.Opti()
 
 # define cost functions
-def cost_motion(meas, sqrt_info, keyframe_i, keyframe_j):
-    ppred = keyframe_j.p - keyframe_i.p
-    wpred = log3(exp3(-keyframe_i.w) @ exp3(keyframe_j.w)) # log ( Ri.T * Rj )
+
+# motion -- constant position
+def cost_constant_position(sqrt_info, keyframe_i, keyframe_j):
+    ppred = keyframe_j.position - keyframe_i.position
+    wpred = log3(exp3(-keyframe_i.anglevector) @ exp3(keyframe_j.anglevector)) # log ( Ri.T * Rj )
     pred  = casadi.vertcat([ ppred, wpred ])
 
-    cost = casadi.sumsqr(sqrt_info @ (meas - pred)) 
+    cost = casadi.sumsqr(sqrt_info @ pred) 
     return cost
 
-# TODO
+# landmark observations
 def cost_landmark(meas, sqrt_info, keyframe_i, landmark_j):
-    ppred = landmark_j.p - keyframe_i.p
-    wpred = log3(exp3(-keyframe_i.w) @ exp3(landmark_j.w)) # log ( Ri.T * Rj )
-    pred  = casadi.vertcat([ ppred, wpred ])
+    ppred = landmark_j.position - keyframe_i.position
+    Rpred = keyframe_i.R.T @ landmark_j.R
 
-    cost = casadi.sumsqr(sqrt_info @ (meas - pred)) 
+    perr = meas[0:3] - ppred
+    Rerr = Rpred.T @ exp3(meas[3:6])
+    werr = log3(Rerr)
+
+    err = casadi.vertcat([perr, werr])
+ 
+    cost = casadi.sumsqr(sqrt_info @ err) 
     return cost
 
-# TODO
+# Prior on first KF
 def cost_prior(meas, sqrt_info, keyframe_i):
-    ppred = landmark_j.p - keyframe_i.p
-    wpred = log3(exp3(-keyframe_i.w) @ exp3(landmark_j.w)) # log ( Ri.T * Rj )
-    pred  = casadi.vertcat([ ppred, wpred ])
+    perr = meas[0:3] - keyframe_i.position
+    werr = log3(keyframe_i.R.T @ exp3(meas[3:6]))
+    err  = casadi.vertcat([ perr, werr ])
 
-    cost = casadi.sumsqr(sqrt_info @ (meas - pred)) 
+    cost = casadi.sumsqr(sqrt_info @ err) 
     return cost
 
 
 # class for keyframes and landmarks
 class OptiVariablePose3:
-    def __init__(self, opti, position, anglevector):
-         self.position      = opti.variable(3)
-         self.anglevector   = opti.variable(3)
-         self.R             = exp3(self.anglevector)
-         opti.set_initial(self.position, position)
-         opti.set_initial(self.anglevector, anglevector)
+    def __init__(self, opti, id, position, anglevector):
+        self.id = id
+        self.position      = opti.variable(3)
+        self.anglevector   = opti.variable(3)
+        self.R             = exp3(self.anglevector)
+        opti.set_initial(self.position, position)
+        opti.set_initial(self.anglevector, anglevector)
 
 # class for factors
 class Factor:
-    def __init__(self,type,i,j,mes,sqrt):
+    def __init__(self, type, i, j, meas, sqrt_info):
         self.type = type
         self.i = i
         self.j = j
-        self.measurement = mes
-        self.sqrt_info = sqrt
+        self.meas = meas
+        self.sqrt_info = sqrt_info
 
 # init the problem
 
-factors   = []
-keyframes = []
-landmarks = []
+factors   = list()
+keyframes = list()
+landmarks = list()
 
 
 # fill the problem from incoming data:
 # begin
-keyframe_origin = OptiVariablePose3(opti, np.array([0,0,0], np.array([0,0,0])))
-factor_prior    = Factor("prior", 0, 0, np.array([0,0,0, 0,0,0]), np.eye(6))
+t       = 0
+kf_id   = 0
+lmk_id  = 0
+fac_id  = 0
 
+
+# prior
+keyframe_origin = OptiVariablePose3(opti, kf_id, np.array([0,0,0], np.array([0,0,0])))
+factor_prior    = Factor("prior", 0, 0, np.array([0,0,0, 0,0,0]), np.eye(6))
 keyframes.append(keyframe_origin)
 factors.append(factor_prior)
-
-# time
-t = 0
+kf_id += 1
 
 # at each lmk observation
 image           = images(t)
@@ -136,9 +153,9 @@ measurement     = tag_pose.to_vector()
 sqrt_info       = # put a const value by now
 
 lmk_idx = find_index(landmarks, tag_id)
-if tag.id is known
+if tag_id is known:
     factors.append(keyframe_index, lmk_idx, measurement, sqrt_info)
-else
+else:
     landmarks.append(new landmark)
     lmk_idx = find_index(landmarks, tag_id)
     factors.append(keyframe_index, lmk_idx, measurement, sqrt_info)
