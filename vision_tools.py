@@ -14,8 +14,8 @@ import cv2
 # so that p_camera = T + R * p_tag
 def poseFromCorners(tag_corners_3d, detected_corners, camera_matrix, distortion_vector):
     (_, rotation_vector, translation_vector) = cv2.solvePnP(tag_corners_3d, detected_corners, camera_matrix, distortion_vector, flags = cv2.SOLVEPNP_IPPE_SQUARE)
-    T = translation_vector
-    w = rotation_vector
+    T = (translation_vector.T)[0]
+    w = (rotation_vector.T)[0]
     R = pin.exp3(w)
     return T, R, w
 
