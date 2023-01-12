@@ -63,7 +63,7 @@ log3 = casadi.Function("log3", [cR], [log3_approx(cR)])
 # - sqrt_info: 6x6 matrix
 
 # camera, detector, and image files
-K           = np.array([[275/2, 0, 275/2],[0, 275/2, 183/2],[0, 0, 1]])
+K           = np.array([[419.52520751953125, 0.0, 427.8790588378906], [0.0, 419.52520751953125, 241.32180786132812], [0.0, 0.0, 1.0]])
 detector    = apriltag.Detector()
 file_tmp = '/home/jsola/dev/casadi-slam/data/visual_odom_laas_corridor/short2/frame{num:04d}.jpg'
 
@@ -175,7 +175,7 @@ while(t <= 5):
     if t == 0: # make new KF, set initial pose and prior factor
         keyframe = OptiVariablePose3(opti, kf_id, initial_position, initial_orientation)
         keyframes.append(keyframe)
-        factors.append(Factor("prior", fac_id, kf_id, 0, np.array([0,0,0, 0,0,0]), np.eye(6)))
+        factors.append(Factor("prior", fac_id, kf_id, 0, np.array([0,0,0, 0,0,0]), 1e4 * np.eye(6)))
 
     else:
         # make new KF at same position than last KF
@@ -188,7 +188,7 @@ while(t <= 5):
         kf_j_idx = kf_i_idx + 1
         # add a constant_position factor between both kf
         fac_id += 1
-        factor = Factor('motion', fac_id, kf_i_idx, kf_j_idx, np.zeros([6,1]), np.eye(6))
+        factor = Factor('motion', fac_id, kf_i_idx, kf_j_idx, np.zeros([6,1]), 1e-2 * np.eye(6))
         factors.append(factor)
 
     # optimize!
@@ -248,6 +248,8 @@ while(t <= 5):
 
     # advance time
     t += 1
+
+###############################################################################################
     
 # print results
 print()
