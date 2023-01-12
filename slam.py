@@ -175,9 +175,10 @@ landmarks = list()
 # process all images in the sequence
 while(t <= 5):
     # read one image
-    print(file_tmp.format(num=t))
+    filename = file_tmp.format(num=t*5)
+    print('reading image file:', filename)
 
-    image = cv2.imread(file_tmp.format(num=t), cv2.IMREAD_GRAYSCALE) 
+    image = cv2.imread(filename, cv2.IMREAD_GRAYSCALE) 
     # TODO: check if no more images, exit loop accordingly
 
     # make KF for new image
