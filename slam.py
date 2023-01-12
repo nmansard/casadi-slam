@@ -173,19 +173,21 @@ while(t < 5):
     for detection in result:
         lmk_id          = detection['id']
         detected_corners = detection['lb-rb-rt-lt']
+        # compute pose of camera wrt tag
         T_t_c, R_t_c, w_t_c = poseFromCorners(tag_corners_3d, detected_corners, K, np.array([]))
+        # compute pose of tag wrt camera
+        T_c_t, R_c_t, w_c_t = invertPose(T_t_c, R_t_c)
     
-        measurement     = casadi.vertcat([T_t_c, w_t_c])
+        measurement     = casadi.vertcat([T_c_t, w_c_t])
         sqrt_info       = np.eye(6)
 
         lmk_idx = find_index(landmarks, lmk_id)
-        if lmk_idx >= 0: # found: known landmark
+        if lmk_idx >= 0: # found: known landmark: only add factor
             factors.append(Factor('landmark', lmk_id, kf_idx, lmk_idx, measurement, sqrt_info))
             fac_id += 1
 
         else: # not found: new landmark
             # lmk pose in world coordinates
-            T_c_t, R_c_t = invertPose(T_t_c, R_t_c)
             lmk_p = keyframe.position + keyframe.R @ T_c_t
             lmk_R = keyframe.R @ R_c_t
             lmk_w = pin.log3(lmk_R)
@@ -193,7 +195,7 @@ while(t < 5):
             landmark = OptiVariablePose3(opti, lmk_id, lmk_p, lmk_w)
             landmarks.append(landmark)
             lmk_idx = find_index(landmarks, lmk_id)
-            # construct and append now factor
+            # construct and append new factor
             factors.append(Factor('landmark', lmk_id, kf_idx, lmk_idx, measurement, sqrt_info))
             fac_id += 1
 
