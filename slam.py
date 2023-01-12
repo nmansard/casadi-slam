@@ -5,19 +5,14 @@ import pinocchio as pin
 from pinocchio import casadi as cpin
 from pinocchio.utils import rotate
 import numpy as np
-import time
 from utils.meshcat_viewer_wrapper import MeshcatVisualizer
 import apriltag
 import cv2
+from april import *
+from vision_tools import *
 
 # BASIC HELPER FUNCTIONS
 
-
-# s is a 3-vector
-# S is a skew-symmetric matrix built from s
-def hat(s):
-    S = casadi.vertcat([[0, -s[2], s[1]], [s[2], 0, -s[0]], [-s[1], s[0], 0]])
-    return S
 
 # S is a skew-symmetric matrix
 # s is the 3-vector extracted from S
@@ -31,10 +26,14 @@ def log3_approx(R):
     w = wedge(R - R.T) / 2
     return w
 
-
+# Find the index in tle list according to object id
+# if not found, return -1
 def find_index(list, id):
     ids = [item.id for item in list]
-    idx = ids.index(id)
+    try:
+        idx = ids.index(id)
+    except ValueError:
+        idx = -1
     return idx
 
 # ## CASADI HELPER FUNCTIONS
@@ -62,6 +61,14 @@ log3 = casadi.Function("log3", [cR], [log3_approx(cR)])
 # - type "motion" "landmark" "prior"
 # - measurement: 6-vector, translation and rotation
 # - sqrt_info: 6x6 matrix
+
+# camera and detector
+K           = np.array([[275/2, 0, 275/2],[0, 275/2, 183/2],[0, 0, 1]])
+detector    = apriltag.apriltag(tag_family)
+
+# initial conditions
+initial_position = np.array([0,0,0])
+initial_orientation = np.array([0,0,0])
 
 # ## PROBLEM
 # Create the casadi optimization problem
@@ -104,82 +111,104 @@ def cost_prior(meas, sqrt_info, keyframe_i):
 
 # class for keyframes and landmarks
 class OptiVariablePose3:
-    def __init__(self, opti, id, position, anglevector):
-        self.id = id
-        self.position      = opti.variable(3)
-        self.anglevector   = opti.variable(3)
-        self.R             = exp3(self.anglevector)
+    def __init__(self, opti, id, timestamp, position, anglevector):
+        self.id             = id
+        self.t              = timestamp
+        self.position       = opti.variable(3)
+        self.anglevector    = opti.variable(3)
+        self.R              = exp3(self.anglevector)
         opti.set_initial(self.position, position)
         opti.set_initial(self.anglevector, anglevector)
 
 # class for factors
 class Factor:
-    def __init__(self, type, i, j, meas, sqrt_info):
+    def __init__(self, type, id, i, j, meas, sqrt_info):
+        self.id = id
         self.type = type
         self.i = i
         self.j = j
         self.meas = meas
         self.sqrt_info = sqrt_info
 
-# init the problem
 
+# INIT THE PROBLEM
+
+# begin, time and ID counters
+t       = 0
+kf_id   = 0
+fac_id  = 0
+
+# init object lists
 factors   = list()
 keyframes = list()
 landmarks = list()
 
+# TEMPORAL LOOP
 
-# fill the problem from incoming data:
-# begin
-t       = 0
-kf_id   = 0
-lmk_id  = 0
-fac_id  = 0
+# process all images in the sequence
+while(t < 5):
 
+    # read one image
+    image = cv2.imread('data/skew.jpeg', cv2.IMREAD_GRAYSCALE) 
 
-# prior
-keyframe_origin = OptiVariablePose3(opti, kf_id, np.array([0,0,0], np.array([0,0,0])))
-factor_prior    = Factor("prior", 0, 0, np.array([0,0,0, 0,0,0]), np.eye(6))
-keyframes.append(keyframe_origin)
-factors.append(factor_prior)
-kf_id += 1
+    # make KF for new image
+    if t == 0: # make new KF, set initial pose and prior factor
+        keyframe = OptiVariablePose3(opti, kf_id, t, initial_position, initial_orientation)
+        keyframes.append(keyframe)
+        factors.append(Factor("prior", fac_id, kf_id, 0, np.array([0,0,0, 0,0,0]), np.eye(6)))
+        fac_id += 1
 
-# at each lmk observation
-image           = images(t)
-tag_detection   = april.detect(image)
-tag_id          = tag_detection.id
-tag_homog       = tag_detection.homog
-tag_pose        = homg_to_pose(tag_homog)
-measurement     = tag_pose.to_vector()
-sqrt_info       = # put a const value by now
+    else:
+        # make new KF at same position than last KF
+        kf_pos = keyframe.position
+        kf_ori = keyframe.anglevector
+        keyframe = OptiVariablePose3(opti, kf_id, t, kf_pos, kf_ori)
+        keyframes.append(keyframe)
 
-lmk_idx = find_index(landmarks, tag_id)
-if tag_id is known:
-    factors.append(keyframe_index, lmk_idx, measurement, sqrt_info)
-else:
-    landmarks.append(new landmark)
-    lmk_idx = find_index(landmarks, tag_id)
-    factors.append(keyframe_index, lmk_idx, measurement, sqrt_info)
+    kf_idx = find_index(keyframes, kf_id)
+    keyframe = keyframes(kf_idx)
 
-# at each new motion
-motion = new motion, 6-vector (dp, dw)
-new_kf = compose(keyframes[-1], motion)
-keyframes.append(new_kf)
-factors.append(old_kf_idx, new_kf_idx, motion, sqrt_info)
+    result   = detector.detect(image)
+    for detection in result:
+        lmk_id          = detection['id']
+        detected_corners = detection['lb-rb-rt-lt']
+        T, w, R = poseFromCorners(tag_corners_3d, detected_corners, K, np.array([]))
+    
+        measurement     = casadi.vertcat([T,w])
+        sqrt_info       = np.eye(6)
 
-# advance time
-t += 1
+        lmk_idx = find_index(landmarks, lmk_id)
+        if lmk_idx >= 0: # found: known landmark
+            factors.append(Factor('landmark', lmk_id, kf_idx, lmk_idx, measurement, sqrt_info))
+            fac_id += 1
+
+        else: # not found: new landmark
+            # lmk pose in world coordinates
+            lmk_p = keyframe.position + keyframe.R @ T
+            lmk_R = keyframe.R @ R
+            lmk_w = pin.log3(lmk_R)
+            # construct and append new lmk
+            landmark = OptiVariablePose3(opti, lmk_id, lmk_p, lmk_w)
+            landmarks.append(landmark)
+            lmk_idx = find_index(landmarks, lmk_id)
+            # construct and append now factor
+            factors.append(Factor('landmark', lmk_id, kf_idx, lmk_idx, measurement, sqrt_info))
+            fac_id += 1
+
+    # advance time
+    t += 1
     
 
 # compute total cost
 
 totalcost = 0
-for factor in factors
+for factor in factors:
     i = factor.i
     j = factor.j
     measurement = factor.measurement
     sqrt_info   = factor.sqrt_info
     if factor.type == "motion":
-        totalcost += cost_motion (measurement, sqrt_info, keyframes[i], keyframes[j])
+        totalcost += cost_constant_position (measurement, sqrt_info, keyframes[i], keyframes[j])
     elif factor.type == "landmark":
         totalcost += cost_landmark (measurement, sqrt_info, keyframes[i], landmarks[j])
     elif factor.type == "prior":
