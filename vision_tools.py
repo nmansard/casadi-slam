@@ -26,7 +26,7 @@ def poseFromCorners(tag_corners_3d, detected_corners, camera_matrix, distortion_
 # tag_corners_3d are the 4 corners of tag in 3d (4x3)
 # result is projected tag corners (4x2)
 def projectTagCorners(T, R, K, tag_corners_3d):
-    projected_corners_h = (K @ (R @ tag_corners_3d.T + np.hstack([T,T,T,T]))).T
+    projected_corners_h = (K @ (R @ tag_corners_3d.T + np.vstack([T,T,T,T]).T)).T
     projected_corners = np.zeros([4,2])
     for row in range(projected_corners_h.shape[0]):
         projected_corners[row,:] = projected_corners_h[row,0:2] / projected_corners_h[row,2]

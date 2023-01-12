@@ -64,7 +64,7 @@ log3 = casadi.Function("log3", [cR], [log3_approx(cR)])
 
 # camera and detector
 K           = np.array([[275/2, 0, 275/2],[0, 275/2, 183/2],[0, 0, 1]])
-detector    = apriltag.apriltag(tag_family)
+detector    = apriltag.Detector()
 
 # initial conditions
 initial_position    = np.array([0,0,0])
@@ -200,8 +200,8 @@ while(t <= 2):
     # process image detections
     detections   = detector.detect(image)
     for detection in detections:
-        lmk_id           = detection['id']
-        detected_corners = detection['lb-rb-rt-lt']
+        lmk_id           = detection.tag_id
+        detected_corners = detection.corners
         # compute pose of camera wrt tag
         T_t_c, R_t_c, w_t_c = poseFromCorners(tag_corners_3d, detected_corners, K, np.array([]))
         # compute pose of tag wrt camera
