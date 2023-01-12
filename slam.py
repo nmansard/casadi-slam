@@ -26,7 +26,7 @@ def log3_approx(R):
     w = wedge(R - R.T) / 2
     return w
 
-# Find the index in tle list according to object id
+# Find the index in the list according to object id
 # if not found, return -1
 def find_index(list, id):
     ids = [item.id for item in list]
@@ -102,9 +102,18 @@ def cost_landmark(meas, sqrt_info, keyframe_i, landmark_j):
     return cost
 
 # Prior on first KF
-def cost_prior(meas, sqrt_info, keyframe_i):
+def cost_keyframe_prior(meas, sqrt_info, keyframe_i):
     perr = meas[0:3] - keyframe_i.position
     werr = log3(keyframe_i.R.T @ exp3(meas[3:6]))
+    err  = casadi.vertcat( perr, werr )
+
+    cost = casadi.sumsqr(sqrt_info @ err) 
+    return cost
+
+# Prior on one landmark
+def cost_landmark_prior(meas, sqrt_info, landmark):
+    perr = meas[0:3] - landmark.position
+    werr = log3(landmark.R.T @ exp3(meas[3:6]))
     err  = casadi.vertcat( perr, werr )
 
     cost = casadi.sumsqr(sqrt_info @ err) 
@@ -143,7 +152,7 @@ def computeTotalCost(factors, keyframes, landmarks):
         elif factor.type == "landmark":
             totalcost += cost_landmark (measurement, sqrt_info, keyframes[i], landmarks[j])
         elif factor.type == "prior":
-            totalcost += cost_prior (measurement, sqrt_info, keyframes[i])
+            totalcost += cost_keyframe_prior (measurement, sqrt_info, keyframes[i])
         else:
             print('Error in the factor type: type not known')
     return totalcost
