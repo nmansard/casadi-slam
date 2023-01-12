@@ -17,7 +17,7 @@ from vision_tools import *
 # S is a skew-symmetric matrix
 # s is the 3-vector extracted from S
 def wedge(S):
-    s = casadi.vertcat([S[2,1], S[0,2], S[1,0]])
+    s = casadi.vertcat(S[2,1], S[0,2], S[1,0])
     return s
     
 # R is a rotation matrix not far from the identity
@@ -67,7 +67,7 @@ K           = np.array([[275/2, 0, 275/2],[0, 275/2, 183/2],[0, 0, 1]])
 detector    = apriltag.apriltag(tag_family)
 
 # initial conditions
-initial_position = np.array([0,0,0])
+initial_position    = np.array([0,0,0])
 initial_orientation = np.array([0,0,0])
 
 # ## PROBLEM
@@ -161,13 +161,18 @@ while(t < 5):
 
     else:
         # make new KF at same position than last KF
-        kf_pos = keyframe.position
-        kf_ori = keyframe.anglevector
-        keyframe = OptiVariablePose3(opti, kf_id, t, kf_pos, kf_ori)
+        kf_i_idx = find_index(keyframes, kf_id)
+        kf_i_pos = keyframe.position
+        kf_i_ori = keyframe.anglevector
+        keyframe = OptiVariablePose3(opti, kf_id, t, kf_i_pos, kf_i_ori)
+        kf_id += 1
         keyframes.append(keyframe)
+        kf_j_idx = kf_i_idx + 1
+        # add a constant_position factor between both kf
+        factor = Factor('motion', fac_id, kf_i_idx, kf_j_idx, np.zeros(6,1), np.eye(6))
 
     kf_idx = find_index(keyframes, kf_id)
-    keyframe = keyframes(kf_idx)
+    keyframe = keyframes[kf_idx]
 
     result   = detector.detect(image)
     for detection in result:
@@ -178,7 +183,7 @@ while(t < 5):
         # compute pose of tag wrt camera
         T_c_t, R_c_t, w_c_t = invertPose(T_t_c, R_t_c)
     
-        measurement     = casadi.vertcat([T_c_t, w_c_t])
+        measurement     = casadi.vertcat(T_c_t, w_c_t)
         sqrt_info       = np.eye(6)
 
         lmk_idx = find_index(landmarks, lmk_id)
