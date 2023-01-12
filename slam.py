@@ -150,6 +150,7 @@ while(t < 5):
 
     # read one image
     image = cv2.imread('data/skew.jpeg', cv2.IMREAD_GRAYSCALE) 
+    # TODO: check if no more images, exit loop accordingly
 
     # make KF for new image
     if t == 0: # make new KF, set initial pose and prior factor
@@ -172,9 +173,9 @@ while(t < 5):
     for detection in result:
         lmk_id          = detection['id']
         detected_corners = detection['lb-rb-rt-lt']
-        T, w, R = poseFromCorners(tag_corners_3d, detected_corners, K, np.array([]))
+        T_t_c, R_t_c, w_t_c = poseFromCorners(tag_corners_3d, detected_corners, K, np.array([]))
     
-        measurement     = casadi.vertcat([T,w])
+        measurement     = casadi.vertcat([T_t_c, w_t_c])
         sqrt_info       = np.eye(6)
 
         lmk_idx = find_index(landmarks, lmk_id)
@@ -184,8 +185,9 @@ while(t < 5):
 
         else: # not found: new landmark
             # lmk pose in world coordinates
-            lmk_p = keyframe.position + keyframe.R @ T
-            lmk_R = keyframe.R @ R
+            T_c_t, R_c_t = invertPose(T_t_c, R_t_c)
+            lmk_p = keyframe.position + keyframe.R @ T_c_t
+            lmk_R = keyframe.R @ R_c_t
             lmk_w = pin.log3(lmk_R)
             # construct and append new lmk
             landmark = OptiVariablePose3(opti, lmk_id, lmk_p, lmk_w)
