@@ -1,23 +1,33 @@
 import numpy as np
+import pinocchio as pin
+import cv2
 
-# compute pose from homography
-# follow algorithm in https://medium.com/analytics-vidhya/using-homography-for-pose-estimation-in-opencv-a7215f260fdd
-def poseFromHomography(H,K):
-    '''H is the homography matrix
-    K is the camera calibration matrix
-    T is translation
-    R is rotation
-    '''
-    H  = H.T
-    h1 = H[0]
-    h2 = H[1]
-    h3 = H[2]
-    K_inv = np.linalg.inv(K)
-    L  = 1 / np.linalg.norm(np.dot(K_inv, h1))
-    r1 = L * np.dot(K_inv, h1)
-    r2 = L * np.dot(K_inv, h2)
-    r3 = np.cross(r1, r2)
-    T = L * (K_inv @ h3.reshape(3, 1))
-    R = np.array([[r1], [r2], [r3]])
-    R = np.reshape(R, (3, 3))   
-    return R, T
+# Compute pose from tag corners
+# tag_corners_3d: tag corners in 3d, in the plane z=0 (4x3)
+# detected_corners: tag corners in the image (4x2)
+# caemra_matrix: intrinsic matrix (3x3)
+# distortion vector: according to OpenCV specs
+# T: translation vector (3x1)
+# w: rotation vector (3x1)
+# R: rotation matrix R = exp3(w)
+# so that p_camera = T + R * p_tag
+def poseFromCorners(tag_corners_3d, detected_corners, camera_matrix, distortion_vector):
+    (_, rotation_vector, translation_vector) = cv2.solvePnP(tag_corners_3d, detected_corners, camera_matrix, distortion_vector, flags = cv2.SOLVEPNP_IPPE_SQUARE)
+    T = translation_vector
+    w = rotation_vector
+    R = pin.exp3(w)
+    return T, w, R
+
+# Project the 4 corners of a tag onto a camera K at pos T and ori R
+# R is rot matrix of tag wrt camera (3x3)
+# T is translation vector of tag wrt camera (3x1)
+# K is camera matrix (3x3)
+# tag_corners_3d are the 4 corners of tag in 3d (4x3)
+# result is projected tag corners (4x2)
+def projectTagCorners(R, T, K, tag_corners_3d):
+    projected_corners_h = (K @ (R @ tag_corners_3d.T + np.hstack([T,T,T,T]))).T
+    projected_corners = np.zeros([4,2])
+    for row in range(projected_corners_h.shape[0]):
+        projected_corners[row,:] = projected_corners_h[row,0:2] / projected_corners_h[row,2]
+    return projected_corners
+

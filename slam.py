@@ -16,13 +16,13 @@ import cv2
 # s is a 3-vector
 # S is a skew-symmetric matrix built from s
 def hat(s):
-    S = np.array([[0, -s[2], s[1]], [s[2], 0, -s[0]], [-s[1], s[0], 0]])
+    S = casadi.vertcat([[0, -s[2], s[1]], [s[2], 0, -s[0]], [-s[1], s[0], 0]])
     return S
 
 # S is a skew-symmetric matrix
 # s is the 3-vector extracted from S
 def wedge(S):
-    s = np.array([S[2,1], S[0,2], S[1,0]])
+    s = casadi.vertcat([S[2,1], S[0,2], S[1,0]])
     return s
     
 # R is a rotation matrix not far from the identity
