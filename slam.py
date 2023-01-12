@@ -65,7 +65,7 @@ log3 = casadi.Function("log3", [cR], [log3_approx(cR)])
 # camera, detector, and image files
 K           = np.array([[419.52520751953125, 0.0, 427.8790588378906], [0.0, 419.52520751953125, 241.32180786132812], [0.0, 0.0, 1.0]])
 detector    = apriltag.Detector()
-file_tmp = '/home/jsola/dev/casadi-slam/data/visual_odom_laas_corridor/short2/frame{num:04d}.jpg'
+file_tmp = '/home/nmansard/src/cpin-ex/casadi-slam/data/visual_odom_laas_corridor/short2/frame{num:04d}.jpg'
 
 # initial conditions
 initial_position    = np.array([0,0,0])
@@ -271,3 +271,35 @@ for keyframe in keyframes:
     kf_p = opti.value(keyframe.position)
     kf_w = opti.value(keyframe.anglevector)
     print('kf  id: ', keyframe.id, '\tpos: ', kf_p, '\tori: ', kf_w)
+
+
+
+'''
+    position et orientation tags: faire un petit carreau et bien le positionner en 3d
+    position et orientation camera: faire un petit prisma 3d poiur chaque keyframe et bien les positionner
+    lmk factors: faire une ligne de chaque KF a chaque LMK. Prendre keyframe.position et landmark.position comme extremes, coulour rouge
+    motion factors: pareil avec des KFs consecutifs, prendre couleur bleu
+'''
+
+viz = MeshcatVisualizer()
+
+for landmark in landmarks:
+    lmk_p = opti.value(landmark.position)
+    lmk_w = opti.value(landmark.anglevector)
+    lmk_M = pin.SE3(pin.exp3(lmk_w),lmk_p)
+    
+    lid = f"lmk_{landmark.id:4}"
+    viz.addBox(lid, [.4, 0.4, 0.005], [.1, 0.1, 0.1, 1])
+    viz.applyConfiguration(lid,lmk_M)
+    
+for keyframe in keyframes:
+    kf_p = opti.value(keyframe.position)
+    kf_w = opti.value(keyframe.anglevector)
+    kf_M = pin.SE3(pin.exp3(kf_w),kf_p)
+
+    kid = f"kf_{keyframe.id:4}"
+    viz.addBox(kid, [0.04, 0.02, 0.02], [.1, 0.1, 0.8, 1])
+    viz.applyConfiguration(kid,kf_M)
+
+
+
