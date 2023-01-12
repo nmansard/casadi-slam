@@ -62,9 +62,10 @@ log3 = casadi.Function("log3", [cR], [log3_approx(cR)])
 # - measurement: 6-vector, translation and rotation
 # - sqrt_info: 6x6 matrix
 
-# camera and detector
+# camera, detector, and image files
 K           = np.array([[275/2, 0, 275/2],[0, 275/2, 183/2],[0, 0, 1]])
 detector    = apriltag.Detector()
+file_tmp = '/home/jsola/dev/casadi-slam/data/visual_odom_laas_corridor/short2/frame{num:04d}.jpg'
 
 # initial conditions
 initial_position    = np.array([0,0,0])
@@ -163,10 +164,11 @@ landmarks = list()
 # TEMPORAL LOOP
 
 # process all images in the sequence
-while(t <= 2):
-
+while(t <= 5):
     # read one image
-    image = cv2.imread('data/skew.jpeg', cv2.IMREAD_GRAYSCALE) 
+    print(file_tmp.format(num=t))
+
+    image = cv2.imread(file_tmp.format(num=t), cv2.IMREAD_GRAYSCALE) 
     # TODO: check if no more images, exit loop accordingly
 
     # make KF for new image
@@ -174,12 +176,6 @@ while(t <= 2):
         keyframe = OptiVariablePose3(opti, kf_id, initial_position, initial_orientation)
         keyframes.append(keyframe)
         factors.append(Factor("prior", fac_id, kf_id, 0, np.array([0,0,0, 0,0,0]), np.eye(6)))
-
-        # optimize!
-        # ## SOLVE
-        totalcost = computeTotalCost(factors, keyframes, landmarks)
-        opti.minimize(totalcost)
-        sol = opti.solve()
 
     else:
         # make new KF at same position than last KF
@@ -195,12 +191,22 @@ while(t <= 2):
         factor = Factor('motion', fac_id, kf_i_idx, kf_j_idx, np.zeros([6,1]), np.eye(6))
         factors.append(factor)
 
+    # optimize!
+    # ## SOLVE
+    totalcost = computeTotalCost(factors, keyframes, landmarks)
+    opti.minimize(totalcost)
+    sol = opti.solve()
+
     kf_idx = find_index(keyframes, kf_id)
+    kf_p = opti.value(keyframe.position)
+    kf_w = opti.value(keyframe.anglevector)
+    kf_R = pin.exp3(kf_w)
 
     # process image detections
     detections   = detector.detect(image)
     for detection in detections:
         lmk_id           = detection.tag_id
+        print('Tag #', lmk_id, 'detected in image')
         detected_corners = detection.corners
         # compute pose of camera wrt tag
         T_t_c, R_t_c, w_t_c = poseFromCorners(tag_corners_3d, detected_corners, K, np.array([]))
@@ -208,29 +214,31 @@ while(t <= 2):
         T_c_t, R_c_t, w_c_t = invertPose(T_t_c, R_t_c)
     
         measurement     = casadi.vertcat(T_c_t, w_c_t)
-        sqrt_info       = np.eye(6)
+        sqrt_info       = np.eye(6) / 1e-2 # noise of 1 cm ; 0.01 rad
 
         lmk_idx = find_index(landmarks, lmk_id)
         if lmk_idx >= 0: # found: known landmark: only add factor
+            print('Tag #', lmk_id, 'found in map')
             fac_id += 1
             factors.append(Factor('landmark', fac_id, kf_idx, lmk_idx, measurement, sqrt_info))
+            print('Factor #', fac_id, 'appended to map')
 
         else: # not found: new landmark
+            print('Tag #', lmk_id, 'not found in map')
             # lmk pose in world coordinates
-            cam_p = opti.value(keyframe.position)
-            cam_w = opti.value(keyframe.anglevector)
-            cam_R = pin.exp3(cam_w)
-            lmk_p = cam_p + cam_R @ T_c_t
-            lmk_R = cam_R @ R_c_t
+            lmk_p = kf_p + kf_R @ T_c_t
+            lmk_R = kf_R @ R_c_t
             lmk_w = pin.log3(lmk_R)
 
             # construct and append new lmk
             landmark = OptiVariablePose3(opti, lmk_id, lmk_p, lmk_w)
             landmarks.append(landmark)
+            print('Tag #', lmk_id, 'appended to map')
             lmk_idx = find_index(landmarks, lmk_id)
             # construct and append new factor
             fac_id += 1
             factors.append(Factor('landmark', fac_id, kf_idx, lmk_idx, measurement, sqrt_info))
+            print('Factor #', fac_id, 'appended to map')
 
 
     # optimize!
