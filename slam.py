@@ -8,77 +8,20 @@ from pinocchio import casadi as cpin
 from utils.meshcat_viewer_wrapper import MeshcatVisualizer
 import apriltag
 import cv2
+from gslam_types import *
 from gslam_april_tools import *
 
-
-#-----------------------------------------------------------------------------------
-# BASIC HELPER FUNCTIONS
-#-----------------------------------------------------------------------------------
-
-
-# S is a skew-symmetric matrix
-# s is the 3-vector extracted from S
-def wedge(S):
-    s = casadi.vertcat(S[2,1], S[0,2], S[1,0])
-    return s
-    
-# R is a rotation matrix not far from the identity
-# w is the approximated rotation vector equivalent to R
-def log3_approx(R):
-    w = wedge(R - R.T) / 2
-    return w
-
-# Find the index in the list according to object id
-# if not found, return -1
-def find_index(list, id):
-    ids = [item.id for item in list]
-    try:
-        idx = ids.index(id)
-    except ValueError:
-        idx = -1
-    return idx
-
-#-----------------------------------------------------------------------------------
-# CASADI HELPER FUNCTIONS
-#-----------------------------------------------------------------------------------
-
-cw = casadi.SX.sym("w", 3, 1)
-cR = casadi.SX.sym("R", 3, 3)
-
-exp3 = casadi.Function("exp3", [cw], [cpin.exp3(cw)])
-log3 = casadi.Function("log3", [cR], [log3_approx(cR)])
-
-#-----------------------------------------------------------------------------------
-# Help on data types
-#-----------------------------------------------------------------------------------
-
-# keyframe:
-# - id
-# - position p
-# - orientation w
-
-# landmarks:
-# - id
-# - position p
-# - orientation w
-
-# factors:
-# - id of first state i
-# - id of second state j
-# - type "motion" "landmark" "prior"
-# - measurement: 6-vector, translation and rotation
-# - sqrt_info: 6x6 matrix
 
 
 #-----------------------------------------------------------------------------------
 # METHODS
 #-----------------------------------------------------------------------------------
 
-# define cost functions
+# cost functions
 
 # motion -- constant position
 def cost_constant_position(sqrt_info, keyframe_i, keyframe_j):
-    ppred = keyframe_j.position - keyframe_i.position
+    ppred = keyframe_i.R.T @ (keyframe_j.position - keyframe_i.position)
     wpred = log3(exp3(-keyframe_i.anglevector) @ exp3(keyframe_j.anglevector)) # log ( Ri.T * Rj )
     pred  = casadi.vertcat( ppred, wpred )
 
@@ -87,15 +30,18 @@ def cost_constant_position(sqrt_info, keyframe_i, keyframe_j):
 
 # landmark observations
 def cost_landmark(meas, sqrt_info, keyframe_i, landmark_j):
-    ppred = landmark_j.position - keyframe_i.position
+    # compose: landmark pose wrt KF pose
+    ppred = keyframe_i.R.T @ (landmark_j.position - keyframe_i.position)
     Rpred = keyframe_i.R.T @ landmark_j.R
 
+    # error: use manifold tools for the orientation part
     perr = meas[0:3] - ppred
     Rerr = Rpred.T @ exp3(meas[3:6])
     werr = log3(Rerr)
 
     err = casadi.vertcat(perr, werr)
  
+    # apply weight and compute squared norm
     cost = casadi.sumsqr(sqrt_info @ err) 
     return cost
 
@@ -117,26 +63,6 @@ def cost_landmark_prior(meas, sqrt_info, landmark):
     cost = casadi.sumsqr(sqrt_info @ err) 
     return cost
 
-
-# class for keyframes and landmarks
-class OptiVariablePose3:
-    def __init__(self, opti, id, position, anglevector):
-        self.id             = id
-        self.position       = opti.variable(3)
-        self.anglevector    = opti.variable(3)
-        self.R              = exp3(self.anglevector)
-        opti.set_initial(self.position, position)
-        opti.set_initial(self.anglevector, anglevector)
-
-# class for factors
-class Factor:
-    def __init__(self, type, id, i, j, meas, sqrt_info):
-        self.type = type
-        self.id = id
-        self.i = i
-        self.j = j
-        self.meas = meas
-        self.sqrt_info = sqrt_info
 
 def computeTotalCost(factors, keyframes, landmarks):
     totalcost = 0
