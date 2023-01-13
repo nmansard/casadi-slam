@@ -8,8 +8,8 @@ import numpy as np
 from utils.meshcat_viewer_wrapper import MeshcatVisualizer
 import apriltag
 import cv2
-from april import *
-from vision_tools import *
+# from april import *
+from gslam_april_tools import *
 import time
 
 
@@ -156,31 +156,6 @@ def computeTotalCost(factors, keyframes, landmarks):
             print('Error in the factor type: type not known')
     return totalcost
 
-# Draw all lobjects
-def drawAll(opti, keyframes, landmarks, factors, viz):
-    '''
-    position et orientation tags: faire un petit carreau et bien le positionner en 3d
-    position et orientation camera: faire un petit prisma 3d pour chaque keyframe et bien les positionner
-    lmk factors: faire une ligne de chaque KF a chaque LMK. Prendre keyframe.position et landmark.position comme extremes, coulour rouge
-    motion factors: pareil avec des KFs consecutifs, prendre couleur bleu
-    '''
-    for landmark in landmarks:
-        lmk_p = opti.value(landmark.position)
-        lmk_w = opti.value(landmark.anglevector)
-        lmk_M = pin.SE3(pin.exp3(lmk_w),lmk_p)
-    
-        lid = f"lmk_{landmark.id:4}"
-        viz.addBox(lid, [0.2, 0.2, 0.005], [0.9, 0.9, 0.9, 0.8])
-        viz.applyConfiguration(lid,lmk_M)
-    
-    for keyframe in keyframes:
-        kf_p = opti.value(keyframe.position)
-        kf_w = opti.value(keyframe.anglevector)
-        kf_M = pin.SE3(pin.exp3(kf_w),kf_p)
-
-        kid = f"kf_{keyframe.id:4}"
-        viz.addBox(kid, [0.05, 0.05, 0.1], [0.1, 0.1, 0.8, 0.3])
-        viz.applyConfiguration(kid,kf_M)
 
 #-----------------------------------------------------------------------------------
 # PROBLEM DATA
@@ -191,7 +166,12 @@ K           = np.array([[   419.53, 0.0,    427.88  ],
                         [   0.0,    419.53, 241.32  ], 
                         [   0.0,    0.0,    1.0     ]])
 detector    = apriltag.Detector()
-file_tmp = './data/visual_odom_laas_corridor/short2/frame{num:04d}.jpg'
+file_tmp    = './data/visual_odom_laas_corridor/short2/frame{num:04d}.jpg'
+
+# AprilTag definitions
+tag_family  = 'tag36h11'
+tag_size    = 0.168
+tag_corners = tag_size / 2 * np.array([[-1,1,0],[1,1,0],[1,-1,0],[-1,-1,0]])
 
 # initial conditions
 initial_position    = np.array([0,0,0])
@@ -224,36 +204,44 @@ landmarks = list()
 #-----------------------------------------------------------------------------------
 
 # process all images in the sequence
-while(t <= 25):
+first_time = True
+while(t <= 250):
     # read one image
     filename = file_tmp.format(num=t)
     print('reading image file:', filename)
-
     image = cv2.imread(filename, cv2.IMREAD_GRAYSCALE) 
-    # TODO: check if no more images, exit loop accordingly
-
+    if image is None:
+        break
+    
     # make KF for new image
-    if t == 0: # make new KF, set initial pose and prior factor
+    if first_time: # first time, make new KF, set initial pose and prior factor
+        first_time = False
         keyframe = OptiVariablePose3(opti, kf_id, initial_position, initial_orientation)
         keyframes.append(keyframe)
         factors.append(Factor("prior", fac_id, kf_id, 0, np.array([0,0,0, 0,0,0]), 1e4 * np.eye(6)))
 
-    else:
-        # make new KF at same position than last KF
-        kf_i_idx = find_index(keyframes, kf_id)
-        kf_i_pos = opti.value(keyframe.position)
-        kf_i_ori = opti.value(keyframe.anglevector)
+    else: # other times, make new KF, add factor to last KF
+        # we implement a constant-position motion model
+        # so we make new KF at same position than last KF
+
+        # recover last KF
+        kf_last_idx = find_index(keyframes, kf_id)
+        kf_last_pos = opti.value(keyframe.position)
+        kf_last_ori = opti.value(keyframe.anglevector)
+
+        # make new KF
         kf_id += 1
-        keyframe = OptiVariablePose3(opti, kf_id, kf_i_pos, kf_i_ori)
+        keyframe = OptiVariablePose3(opti, kf_id, kf_last_pos, kf_last_ori)
         keyframes.append(keyframe)
-        kf_j_idx = kf_i_idx + 1
-        # add a constant_position factor between both kf
+        kf_new_idx = kf_last_idx + 1
+
+        # add a constant_position factor between both KF
         fac_id += 1
-        factor = Factor('motion', fac_id, kf_i_idx, kf_j_idx, np.zeros([6,1]), 1e-2 * np.eye(6))
+        factor = Factor('motion', fac_id, kf_last_idx, kf_new_idx, np.zeros([6,1]), 1e-2 * np.eye(6))
         factors.append(factor)
 
     # optimize!
-    # ## SOLVE
+    # solve so that opti.values(...) work
     totalcost = computeTotalCost(factors, keyframes, landmarks)
     opti.minimize(totalcost)
     sol = opti.solve()
@@ -272,9 +260,9 @@ while(t <= 25):
         detected_corners = detection.corners
         
         # compute pose of tag wrt camera
-        T_c_t, R_c_t, w_c_t = poseFromCorners(tag_corners_3d, detected_corners, K, np.array([]))
+        T_c_t, R_c_t, w_c_t = poseFromCorners(tag_corners, detected_corners, K, np.array([]))
 
-        projected_corners = projectTagCorners(T_c_t, R_c_t, K, tag_corners_3d)
+        projected_corners = projectTagCorners(T_c_t, R_c_t, K, tag_corners)
 
         print(detected_corners)
         print(projected_corners)
@@ -318,7 +306,7 @@ while(t <= 25):
     print('finished t=',t)
 
     # advance time
-    t += 1
+    t += 5
 
 ###############################################################################################
     
