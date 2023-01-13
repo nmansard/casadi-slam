@@ -68,8 +68,3 @@ python3 -m pip install opencv-python apriltag
 ```
 ## Meshcat
 
-Install Meshcat
-
-```bash
-python3 -m pip install --update meshcat
-```
