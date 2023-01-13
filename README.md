@@ -61,7 +61,7 @@ Download and compile pinocchio with the branch pinocchio3-preview.
 
 Install python bindings for both libs. This will also install the `.so` libs themselves. 
 
-WARNING! If you have other versions pre-installed, uninstall them before or use python environments to put them out of the way. This is important especially for `apriltag`, since the version installed here is rather old, and you might have a newer one.
+WARNING! If you have other versions of the binaries `.so` pre-installed, uninstall them before or use python environments to put them out of the way. This is important especially for `apriltag`, since the version installed here is rather old, and you might have a newer one.
 
 ```bash
 python3 -m pip install opencv-python apriltag
