@@ -80,5 +80,5 @@ def viewtraj():
         viz.applyConfiguration(pointdesID, pt.tolist() + [0, 0, 0, 1])
         viz.applyConfiguration(pointID, (R_sol @ p).tolist() + [0, 0, 0, 1])
         viz.applyConfiguration(boxID, [0, 0, 0] + pin.Quaternion(R_sol).coeffs().tolist())
-        time.sleep(1e-2)
+        time.sleep(1e-0)
 

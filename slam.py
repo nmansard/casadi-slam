@@ -10,8 +10,12 @@ import apriltag
 import cv2
 from april import *
 from vision_tools import *
+import time
 
+
+#-----------------------------------------------------------------------------------
 # BASIC HELPER FUNCTIONS
+#-----------------------------------------------------------------------------------
 
 
 # S is a skew-symmetric matrix
@@ -36,7 +40,10 @@ def find_index(list, id):
         idx = -1
     return idx
 
-# ## CASADI HELPER FUNCTIONS
+#-----------------------------------------------------------------------------------
+# CASADI HELPER FUNCTIONS
+#-----------------------------------------------------------------------------------
+
 cw = casadi.SX.sym("w", 3, 1)
 cR = casadi.SX.sym("R", 3, 3)
 
@@ -44,8 +51,9 @@ exp3 = casadi.Function("exp3", [cw], [cpin.exp3(cw)])
 #log3 = casadi.Function("logp3", [cR], [cpin.log3(cR)])
 log3 = casadi.Function("log3", [cR], [log3_approx(cR)])
 
-# data types
-#-----------
+#-----------------------------------------------------------------------------------
+# Help on data types
+#-----------------------------------------------------------------------------------
 
 # keyframe:
 # - position p
@@ -62,19 +70,10 @@ log3 = casadi.Function("log3", [cR], [log3_approx(cR)])
 # - measurement: 6-vector, translation and rotation
 # - sqrt_info: 6x6 matrix
 
-# camera, detector, and image files
-K           = np.array([[419.52520751953125, 0.0, 427.8790588378906], [0.0, 419.52520751953125, 241.32180786132812], [0.0, 0.0, 1.0]])
-detector    = apriltag.Detector()
-file_tmp = '/home/nmansard/src/cpin-ex/casadi-slam/data/visual_odom_laas_corridor/short2/frame{num:04d}.jpg'
 
-# initial conditions
-initial_position    = np.array([0,0,0])
-initial_orientation = np.array([0,0,0])
-
-# ## PROBLEM
-# Create the casadi optimization problem
-opti = casadi.Opti()
-opti.solver("ipopt")
+#-----------------------------------------------------------------------------------
+# METHODS
+#-----------------------------------------------------------------------------------
 
 # define cost functions
 
@@ -157,10 +156,60 @@ def computeTotalCost(factors, keyframes, landmarks):
             print('Error in the factor type: type not known')
     return totalcost
 
+# Draw all lobjects
+def drawAll(opti, keyframes, landmarks, factors, viz):
+    '''
+    position et orientation tags: faire un petit carreau et bien le positionner en 3d
+    position et orientation camera: faire un petit prisma 3d pour chaque keyframe et bien les positionner
+    lmk factors: faire une ligne de chaque KF a chaque LMK. Prendre keyframe.position et landmark.position comme extremes, coulour rouge
+    motion factors: pareil avec des KFs consecutifs, prendre couleur bleu
+    '''
+    for landmark in landmarks:
+        lmk_p = opti.value(landmark.position)
+        lmk_w = opti.value(landmark.anglevector)
+        lmk_M = pin.SE3(pin.exp3(lmk_w),lmk_p)
+    
+        lid = f"lmk_{landmark.id:4}"
+        viz.addBox(lid, [0.2, 0.2, 0.005], [0.9, 0.9, 0.9, 0.8])
+        viz.applyConfiguration(lid,lmk_M)
+    
+    for keyframe in keyframes:
+        kf_p = opti.value(keyframe.position)
+        kf_w = opti.value(keyframe.anglevector)
+        kf_M = pin.SE3(pin.exp3(kf_w),kf_p)
 
+        kid = f"kf_{keyframe.id:4}"
+        viz.addBox(kid, [0.05, 0.05, 0.1], [0.1, 0.1, 0.8, 0.3])
+        viz.applyConfiguration(kid,kf_M)
+
+#-----------------------------------------------------------------------------------
+# PROBLEM DATA
+#-----------------------------------------------------------------------------------
+
+# camera, detector, and image files
+K           = np.array([[   419.53, 0.0,    427.88  ], 
+                        [   0.0,    419.53, 241.32  ], 
+                        [   0.0,    0.0,    1.0     ]])
+detector    = apriltag.Detector()
+file_tmp = './data/visual_odom_laas_corridor/short2/frame{num:04d}.jpg'
+
+# initial conditions
+initial_position    = np.array([0,0,0])
+initial_orientation = np.array([0,0,0])
+
+# Create the casadi optimization problem
+opti = casadi.Opti()
+opti.solver("ipopt")
+
+# Display
+viz = MeshcatVisualizer()
+
+
+#-----------------------------------------------------------------------------------
 # INIT THE PROBLEM
+#-----------------------------------------------------------------------------------
 
-# begin, time and ID counters
+# time and ID counters
 t       = 0
 kf_id   = 0
 fac_id  = 0
@@ -170,12 +219,14 @@ factors   = list()
 keyframes = list()
 landmarks = list()
 
+#-----------------------------------------------------------------------------------
 # TEMPORAL LOOP
+#-----------------------------------------------------------------------------------
 
 # process all images in the sequence
-while(t <= 5):
+while(t <= 25):
     # read one image
-    filename = file_tmp.format(num=t*5)
+    filename = file_tmp.format(num=t)
     print('reading image file:', filename)
 
     image = cv2.imread(filename, cv2.IMREAD_GRAYSCALE) 
@@ -216,45 +267,55 @@ while(t <= 5):
     detections   = detector.detect(image)
     for detection in detections:
         lmk_id           = detection.tag_id
-        print('Tag #', lmk_id, 'detected in image')
+        print('Tag     #', lmk_id, 'detected in image')
+
         detected_corners = detection.corners
+        
         # compute pose of camera wrt tag
-        T_t_c, R_t_c, w_t_c = poseFromCorners(tag_corners_3d, detected_corners, K, np.array([]))
-        # compute pose of tag wrt camera
-        T_c_t, R_c_t, w_c_t = invertPose(T_t_c, R_t_c)
+        T, R, w = poseFromCorners(tag_corners_3d, detected_corners, K, np.array([]))
+        # # compute pose of tag wrt camera
+        # T_c_t, R_c_t, w_c_t = invertPose(T, R)
     
-        measurement     = casadi.vertcat(T_c_t, w_c_t)
+        # measurement     = casadi.vertcat(T_c_t, w_c_t)
+        measurement     = casadi.vertcat(T, w)
         sqrt_info       = np.eye(6) / 1e-2 # noise of 1 cm ; 0.01 rad
 
         lmk_idx = find_index(landmarks, lmk_id)
         if lmk_idx >= 0: # found: known landmark: only add factor
-            print('Tag #', lmk_id, 'found in map')
+            print('Landmark #', lmk_id, 'found in map')
             fac_id += 1
             factors.append(Factor('landmark', fac_id, kf_idx, lmk_idx, measurement, sqrt_info))
-            print('Factor #', fac_id, 'appended to map')
+            print('Factor   #', fac_id, 'appended to map')
 
         else: # not found: new landmark
-            print('Tag #', lmk_id, 'not found in map')
+            print('Landmark #', lmk_id, 'not found in map')
             # lmk pose in world coordinates
-            lmk_p = kf_p + kf_R @ T_c_t
-            lmk_R = kf_R @ R_c_t
+            # lmk_p = kf_p + kf_R @ T_c_t
+            # lmk_R = kf_R @ R_c_t
+            lmk_p = kf_p + kf_R @ T
+            lmk_R = kf_R @ R
             lmk_w = pin.log3(lmk_R)
 
             # construct and append new lmk
             landmark = OptiVariablePose3(opti, lmk_id, lmk_p, lmk_w)
             landmarks.append(landmark)
-            print('Tag #', lmk_id, 'appended to map')
+            print('Landmark #', lmk_id, 'appended to map')
             lmk_idx = find_index(landmarks, lmk_id)
             # construct and append new factor
             fac_id += 1
             factors.append(Factor('landmark', fac_id, kf_idx, lmk_idx, measurement, sqrt_info))
-            print('Factor #', fac_id, 'appended to map')
+            print('Factor   #', fac_id, 'appended to map')
 
 
     # optimize!
     totalcost = computeTotalCost(factors, keyframes, landmarks)
     opti.minimize(totalcost)
     sol = opti.solve()
+
+    # display
+    drawAll(opti, keyframes, landmarks, factors, viz)
+    time.sleep(1e-2)
+    print('finished t=',t)
 
     # advance time
     t += 1
@@ -274,32 +335,8 @@ for keyframe in keyframes:
 
 
 
-'''
-    position et orientation tags: faire un petit carreau et bien le positionner en 3d
-    position et orientation camera: faire un petit prisma 3d poiur chaque keyframe et bien les positionner
-    lmk factors: faire une ligne de chaque KF a chaque LMK. Prendre keyframe.position et landmark.position comme extremes, coulour rouge
-    motion factors: pareil avec des KFs consecutifs, prendre couleur bleu
-'''
 
-viz = MeshcatVisualizer()
 
-for landmark in landmarks:
-    lmk_p = opti.value(landmark.position)
-    lmk_w = opti.value(landmark.anglevector)
-    lmk_M = pin.SE3(pin.exp3(lmk_w),lmk_p)
-    
-    lid = f"lmk_{landmark.id:4}"
-    viz.addBox(lid, [.4, 0.4, 0.005], [.1, 0.1, 0.1, 1])
-    viz.applyConfiguration(lid,lmk_M)
-    
-for keyframe in keyframes:
-    kf_p = opti.value(keyframe.position)
-    kf_w = opti.value(keyframe.anglevector)
-    kf_M = pin.SE3(pin.exp3(kf_w),kf_p)
-
-    kid = f"kf_{keyframe.id:4}"
-    viz.addBox(kid, [0.04, 0.02, 0.02], [.1, 0.1, 0.8, 1])
-    viz.applyConfiguration(kid,kf_M)
 
 
 
