@@ -19,18 +19,18 @@ def poseFromCorners(tag_corners_3d, detected_corners, camera_matrix, distortion_
     R_c_t = pin.exp3(w_c_t)
     return T_c_t, R_c_t, w_c_t
 
-# Project the 4 corners of a tag onto a camera K at pos T and ori R
-# R is rot matrix of camera wrt tag (3x3)
-# T is translation vector of camera wrt tag (3x1)
-# K is camera matrix (3x3)
-# tag_corners_3d are the 4 corners of tag in 3d (4x3)
-# result is projected tag corners (4x2)
-def projectTagCorners(T, R, K, tag_corners_3d):
-    projected_corners_h = (K @ (R @ tag_corners_3d.T + np.vstack([T,T,T,T]).T)).T
-    projected_corners = np.zeros([4,2])
-    for row in range(projected_corners_h.shape[0]):
-        projected_corners[row,:] = projected_corners_h[row,0:2] / projected_corners_h[row,2]
-    return projected_corners
+# # Project the 4 corners of a tag onto a camera K at pos T and ori R
+# # R is rot matrix of camera wrt tag (3x3)
+# # T is translation vector of camera wrt tag (3x1)
+# # K is camera matrix (3x3)
+# # tag_corners_3d are the 4 corners of tag in 3d (4x3)
+# # result is projected tag corners (4x2)
+# def projectTagCorners(T, R, K, tag_corners_3d):
+#     projected_corners_h = (K @ (R @ tag_corners_3d.T + np.vstack([T,T,T,T]).T)).T
+#     projected_corners = np.zeros([4,2])
+#     for row in range(projected_corners_h.shape[0]):
+#         projected_corners[row,:] = projected_corners_h[row,0:2] / projected_corners_h[row,2]
+#     return projected_corners
 
 # invert a 3d pose (non casadi)
 def invertPose(T, R):
