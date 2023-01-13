@@ -1,6 +1,49 @@
 import numpy as np
 import pinocchio as pin
+from pinocchio import casadi as cpin
 import cv2
+import casadi
+
+#-----------------------------------------------------------------------------------
+# BASIC HELPER FUNCTIONS
+#-----------------------------------------------------------------------------------
+
+
+# S is a skew-symmetric matrix
+# s is the 3-vector extracted from S
+def wedge(S):
+    s = casadi.vertcat(S[2,1], S[0,2], S[1,0])
+    return s
+    
+# R is a rotation matrix not far from the identity
+# w is the approximated rotation vector equivalent to R
+def log3_approx(R):
+    w = wedge(R - R.T) / 2
+    return w
+
+# Find the index in the list according to object id
+# if not found, return -1
+def find_index(list, id):
+    ids = [item.id for item in list]
+    try:
+        idx = ids.index(id)
+    except ValueError:
+        idx = -1
+    return idx
+
+#-----------------------------------------------------------------------------------
+# CASADI HELPER FUNCTIONS
+#-----------------------------------------------------------------------------------
+
+cw = casadi.SX.sym("w", 3, 1)
+cR = casadi.SX.sym("R", 3, 3)
+
+exp3 = casadi.Function("exp3", [cw], [cpin.exp3(cw)])
+log3 = casadi.Function("log3", [cR], [log3_approx(cR)])
+
+#-----------------------------------------------------------------------------------
+# OTHER HELPER FUNCTIONS
+#-----------------------------------------------------------------------------------
 
 # Compute pose from tag corners
 # tag_corners_3d: tag corners in 3d, in the plane z=0 (4x3)
@@ -14,8 +57,8 @@ import cv2
 # so that p_camera = T_c_t + R_c_t * p_tag
 def poseFromCorners(tag_corners_3d, detected_corners, camera_matrix, distortion_vector):
     (_, rotation_vector, translation_vector) = cv2.solvePnP(tag_corners_3d, detected_corners, camera_matrix, distortion_vector, flags = cv2.SOLVEPNP_IPPE_SQUARE)
-    T_c_t = (translation_vector.T)[0]
-    w_c_t = (rotation_vector.T)[0]
+    T_c_t = (translation_vector.T)[0]  # re-format weird opencv result
+    w_c_t = (rotation_vector.T)[0]     # re-format weird opencv result
     R_c_t = pin.exp3(w_c_t)
     return T_c_t, R_c_t, w_c_t
 
@@ -83,3 +126,9 @@ def drawAll(opti, keyframes, landmarks, factors, viz):
     #     viz.addCylinder(fid, length, 0.002, [0,1,0,1])
 
 
+# returns the reprojection error between the detected tags and the projected tags
+# the error is the rms value of all 8 pixel coordinates: 2 per corner, 4 corners.
+def reprojectionError(projected_corners, detected_corners):
+    reprojection_errors = projected_corners - detected_corners
+    reprojection_error_rms = np.linalg.norm(reprojection_errors) / np.sqrt(8.0)
+    return reprojection_error_rms
