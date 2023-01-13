@@ -66,5 +66,4 @@ WARNING! If you have other versions pre-installed, uninstall them before or use 
 ```bash
 python3 -m pip install opencv-python apriltag
 ```
-## Meshcat
 
