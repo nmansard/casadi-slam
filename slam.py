@@ -1,16 +1,14 @@
 
 
-import casadi
-import pinocchio as pin
-from pinocchio import casadi as cpin
-from pinocchio.utils import rotate
 import numpy as np
+import time
+import pinocchio as pin
+import casadi
+from pinocchio import casadi as cpin
 from utils.meshcat_viewer_wrapper import MeshcatVisualizer
 import apriltag
 import cv2
-# from april import *
 from gslam_april_tools import *
-import time
 
 
 #-----------------------------------------------------------------------------------
@@ -48,7 +46,6 @@ cw = casadi.SX.sym("w", 3, 1)
 cR = casadi.SX.sym("R", 3, 3)
 
 exp3 = casadi.Function("exp3", [cw], [cpin.exp3(cw)])
-#log3 = casadi.Function("logp3", [cR], [cpin.log3(cR)])
 log3 = casadi.Function("log3", [cR], [log3_approx(cR)])
 
 #-----------------------------------------------------------------------------------
@@ -56,16 +53,18 @@ log3 = casadi.Function("log3", [cR], [log3_approx(cR)])
 #-----------------------------------------------------------------------------------
 
 # keyframe:
+# - id
 # - position p
 # - orientation w
 
 # landmarks:
+# - id
 # - position p
 # - orientation w
 
 # factors:
-# - index first state i
-# - index second state j
+# - id of first state i
+# - id of second state j
 # - type "motion" "landmark" "prior"
 # - measurement: 6-vector, translation and rotation
 # - sqrt_info: 6x6 matrix
@@ -141,7 +140,8 @@ class Factor:
 
 def computeTotalCost(factors, keyframes, landmarks):
     totalcost = 0
-    for factor in factors:
+    for fid in factors:
+        factor = factors[fid]
         i = factor.i
         j = factor.j
         measurement = factor.meas
@@ -195,9 +195,9 @@ kf_id   = 0
 fac_id  = 0
 
 # init object lists
-factors   = list()
-keyframes = list()
-landmarks = list()
+factors   = dict()
+keyframes = dict()
+landmarks = dict()
 
 #-----------------------------------------------------------------------------------
 # TEMPORAL LOOP
@@ -217,28 +217,28 @@ while(t <= 250):
     if first_time: # first time, make new KF, set initial pose and prior factor
         first_time = False
         keyframe = OptiVariablePose3(opti, kf_id, initial_position, initial_orientation)
-        keyframes.append(keyframe)
-        factors.append(Factor("prior", fac_id, kf_id, 0, np.array([0,0,0, 0,0,0]), 1e4 * np.eye(6)))
+        keyframes[kf_id] = keyframe
+        factors[fac_id] = Factor("prior", fac_id, kf_id, 0, np.array([0,0,0, 0,0,0]), 1e4 * np.eye(6))
 
     else: # other times, make new KF, add factor to last KF
         # we implement a constant-position motion model
         # so we make new KF at same position than last KF
 
         # recover last KF
-        kf_last_idx = find_index(keyframes, kf_id)
+        kf_last_id = kf_id
         kf_last_pos = opti.value(keyframe.position)
         kf_last_ori = opti.value(keyframe.anglevector)
 
         # make new KF
         kf_id += 1
-        keyframe = OptiVariablePose3(opti, kf_id, kf_last_pos, kf_last_ori)
-        keyframes.append(keyframe)
-        kf_new_idx = kf_last_idx + 1
+        kf_new_id = kf_id
+        keyframe = OptiVariablePose3(opti, kf_new_id, kf_last_pos, kf_last_ori)
+        keyframes[kf_id] = keyframe
 
         # add a constant_position factor between both KF
         fac_id += 1
-        factor = Factor('motion', fac_id, kf_last_idx, kf_new_idx, np.zeros([6,1]), 1e-2 * np.eye(6))
-        factors.append(factor)
+        factor = Factor('motion', fac_id, kf_last_id, kf_new_id, np.zeros([6,1]), 1e-2 * np.eye(6))
+        factors[fac_id] = factor
 
     # optimize!
     # solve so that opti.values(...) work
@@ -246,7 +246,7 @@ while(t <= 250):
     opti.minimize(totalcost)
     sol = opti.solve()
 
-    kf_idx = find_index(keyframes, kf_id)
+    # extract keyframe values
     kf_p = opti.value(keyframe.position)
     kf_w = opti.value(keyframe.anglevector)
     kf_R = pin.exp3(kf_w)
@@ -255,30 +255,29 @@ while(t <= 250):
     detections   = detector.detect(image)
     for detection in detections:
         lmk_id           = detection.tag_id
-        print('Tag     #', lmk_id, 'detected in image')
-
         detected_corners = detection.corners
+
+        print('Tag     #', lmk_id, 'detected in image')
         
         # compute pose of tag wrt camera
         T_c_t, R_c_t, w_c_t = poseFromCorners(tag_corners, detected_corners, K, np.array([]))
 
-        projected_corners = projectTagCorners(T_c_t, R_c_t, K, tag_corners)
-
-        print(detected_corners)
-        print(projected_corners)
-    
         measurement     = casadi.vertcat(T_c_t, w_c_t)
         sqrt_info       = np.eye(6) / 1e-2 # noise of 1 cm ; 0.01 rad
 
-        lmk_idx = find_index(landmarks, lmk_id)
-        if lmk_idx >= 0: # found: known landmark: only add factor
-            print('Landmark #', lmk_id, 'found in map')
+        # some tests
+        projected_corners = projectTagCorners(T_c_t, R_c_t, K, tag_corners)
+        # print(detected_corners)
+        # print(projected_corners)
+    
+        if lmk_id in landmarks: # found: known landmark: only add factor
+            print('Landmark #', lmk_id, 'found in graph')
             fac_id += 1
-            factors.append(Factor('landmark', fac_id, kf_idx, lmk_idx, measurement, sqrt_info))
-            print('Factor   #', fac_id, 'appended to map')
+            factors[fac_id] = Factor('landmark', fac_id, kf_id, lmk_id, measurement, sqrt_info)
+            print('Factor   #', fac_id, 'appended to graph')
 
         else: # not found: new landmark
-            print('Landmark #', lmk_id, 'not found in map')
+            print('Landmark #', lmk_id, 'not found in graph')
             # lmk pose in world coordinates
             lmk_p = kf_p + kf_R @ T_c_t
             lmk_R = kf_R @ R_c_t
@@ -286,13 +285,13 @@ while(t <= 250):
 
             # construct and append new lmk
             landmark = OptiVariablePose3(opti, lmk_id, lmk_p, lmk_w)
-            landmarks.append(landmark)
-            print('Landmark #', lmk_id, 'appended to map')
-            lmk_idx = find_index(landmarks, lmk_id)
+            landmarks[lmk_id] = landmark
+            print('Landmark #', lmk_id, 'appended to graph')
+
             # construct and append new factor
             fac_id += 1
-            factors.append(Factor('landmark', fac_id, kf_idx, lmk_idx, measurement, sqrt_info))
-            print('Factor   #', fac_id, 'appended to map')
+            factors[fac_id] = Factor('landmark', fac_id, kf_id, lmk_id, measurement, sqrt_info)
+            print('Factor   #', fac_id, 'appended to graph')
 
 
     # optimize!
@@ -306,23 +305,25 @@ while(t <= 250):
     print('finished t=',t)
 
     # advance time
-    t += 5
+    t += 2
 
 ###############################################################################################
     
 # print results
 print()
-for landmark in landmarks:
+for lid in landmarks:
+    landmark = landmarks[lid]
     lmk_p = opti.value(landmark.position)
     lmk_w = opti.value(landmark.anglevector)
     print('lmk id: ', landmark.id, '\tpos: ', lmk_p, '\tori: ', lmk_w)
-for keyframe in keyframes:
+for kid in keyframes:
+    keyframe = keyframes[kid]
     kf_p = opti.value(keyframe.position)
     kf_w = opti.value(keyframe.anglevector)
     print('kf  id: ', keyframe.id, '\tpos: ', kf_p, '\tori: ', kf_w)
 
 
-
+viz.addCylinder()
 
 
 

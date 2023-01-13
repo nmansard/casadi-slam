@@ -47,7 +47,8 @@ def drawAll(opti, keyframes, landmarks, factors, viz):
     lmk factors: faire une ligne de chaque KF a chaque LMK. Prendre keyframe.position et landmark.position comme extremes, coulour rouge
     motion factors: pareil avec des KFs consecutifs, prendre couleur bleu
     '''
-    for landmark in landmarks:
+    for l_id in landmarks:
+        landmark = landmarks[l_id]
         lmk_p = opti.value(landmark.position)
         lmk_w = opti.value(landmark.anglevector)
         lmk_M = pin.SE3(pin.exp3(lmk_w),lmk_p)
@@ -56,7 +57,8 @@ def drawAll(opti, keyframes, landmarks, factors, viz):
         viz.addBox(lid, [0.2, 0.2, 0.005], [0.9, 0.9, 0.9, 0.8])
         viz.applyConfiguration(lid,lmk_M)
     
-    for keyframe in keyframes:
+    for k_id in keyframes:
+        keyframe = keyframes[k_id]
         kf_p = opti.value(keyframe.position)
         kf_w = opti.value(keyframe.anglevector)
         kf_M = pin.SE3(pin.exp3(kf_w),kf_p)
@@ -64,3 +66,20 @@ def drawAll(opti, keyframes, landmarks, factors, viz):
         kid = f"kf_{keyframe.id:4}"
         viz.addBox(kid, [0.05, 0.05, 0.1], [0.1, 0.1, 0.8, 0.3])
         viz.applyConfiguration(kid,kf_M)
+
+    # for f_id in factors:
+    #     factor = factors[f_id]
+    #     i = factor.i
+    #     j = factor.j
+    #     pi = opti.value(keyframes[i].position)
+    #     if factor.type == 'motion':
+    #         pj = opti.value(keyframes[j].position)
+    #     elif factor.type == 'landmark':
+    #         pj = opti.value(landmarks[j].position)
+    #     else:
+    #         continue
+    #     length = np.linalg.norm(pj - pi)
+    #     fid = f"fac_{f_id:4}"
+    #     viz.addCylinder(fid, length, 0.002, [0,1,0,1])
+
+
