@@ -179,7 +179,8 @@ initial_orientation = np.array([0,0,0])
 
 # Create the casadi optimization problem
 opti = casadi.Opti()
-opti.solver("ipopt")
+opts = {'ipopt.print_level': 0, 'print_time': 0, 'ipopt.sb': 'yes'}
+opti.solver("ipopt", opts)
 
 # Display
 viz = MeshcatVisualizer()
@@ -205,13 +206,17 @@ landmarks = dict()
 
 # process all images in the sequence
 first_time = True
-while(t <= 250):
+while(t <= 25):
     # read one image
     filename = file_tmp.format(num=t)
     print('reading image file:', filename)
     image = cv2.imread(filename, cv2.IMREAD_GRAYSCALE) 
     if image is None:
         break
+
+    cv2.imshow("Image view", image)
+    cv2.waitKey(2) # waits until a key is pressed
+
     
     # make KF for new image
     if first_time: # first time, make new KF, set initial pose and prior factor
@@ -237,7 +242,7 @@ while(t <= 250):
 
         # add a constant_position factor between both KF
         fac_id += 1
-        factor = Factor('motion', fac_id, kf_last_id, kf_new_id, np.zeros([6,1]), 1e-2 * np.eye(6))
+        factor = Factor('motion', fac_id, kf_last_id, kf_new_id, np.zeros([6,1]), np.eye(6) / 1e3)
         factors[fac_id] = factor
 
     # optimize!
@@ -266,7 +271,7 @@ while(t <= 250):
         sqrt_info       = np.eye(6) / 1e-2 # noise of 1 cm ; 0.01 rad
 
         # some tests
-        projected_corners = projectTagCorners(T_c_t, R_c_t, K, tag_corners)
+        projected_corners = cv2.projectPoints(tag_corners, R_c_t, T_c_t, K, np.array([]))
         # print(detected_corners)
         # print(projected_corners)
     
@@ -302,10 +307,10 @@ while(t <= 250):
     # display
     drawAll(opti, keyframes, landmarks, factors, viz)
     time.sleep(1e-2)
-    print('finished t=',t)
+    print('-----------------------------------')
 
     # advance time
-    t += 2
+    t += 1
 
 ###############################################################################################
     
@@ -323,9 +328,5 @@ for kid in keyframes:
     print('kf  id: ', keyframe.id, '\tpos: ', kf_p, '\tori: ', kf_w)
 
 
-viz.addCylinder()
 
-
-
-
-
+cv2.destroyAllWindows() # destroys the window showing image
