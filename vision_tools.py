@@ -7,17 +7,17 @@ import cv2
 # detected_corners: tag corners in the image (4x2)
 # caemra_matrix: intrinsic matrix (3x3)
 # distortion vector: according to OpenCV specs
-# Pose: this is the pose of the camera with respect to the tag. It consists of:
-#   T: translation vector (3x1)
-#   w: rotation vector (3x1)
-#   R: rotation matrix R = exp3(w)
-# so that p_camera = T + R * p_tag
+# Pose: this is the pose of the tag with respect to the camera. It consists of:
+#   T_c_t: translation vector (3x1)
+#   w_c_t: rotation vector (3x1)
+#   R_c_t: rotation matrix R_c_t = exp3(w_c_t)
+# so that p_camera = T_c_t + R_c_t * p_tag
 def poseFromCorners(tag_corners_3d, detected_corners, camera_matrix, distortion_vector):
     (_, rotation_vector, translation_vector) = cv2.solvePnP(tag_corners_3d, detected_corners, camera_matrix, distortion_vector, flags = cv2.SOLVEPNP_IPPE_SQUARE)
-    T = (translation_vector.T)[0]
-    w = (rotation_vector.T)[0]
-    R = pin.exp3(w)
-    return T, R, w
+    T_c_t = (translation_vector.T)[0]
+    w_c_t = (rotation_vector.T)[0]
+    R_c_t = pin.exp3(w_c_t)
+    return T_c_t, R_c_t, w_c_t
 
 # Project the 4 corners of a tag onto a camera K at pos T and ori R
 # R is rot matrix of camera wrt tag (3x3)

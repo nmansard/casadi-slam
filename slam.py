@@ -271,13 +271,15 @@ while(t <= 25):
 
         detected_corners = detection.corners
         
-        # compute pose of camera wrt tag
-        T, R, w = poseFromCorners(tag_corners_3d, detected_corners, K, np.array([]))
-        # # compute pose of tag wrt camera
-        # T_c_t, R_c_t, w_c_t = invertPose(T, R)
+        # compute pose of tag wrt camera
+        T_c_t, R_c_t, w_c_t = poseFromCorners(tag_corners_3d, detected_corners, K, np.array([]))
+
+        projected_corners = projectTagCorners(T_c_t, R_c_t, K, tag_corners_3d)
+
+        print(detected_corners)
+        print(projected_corners)
     
-        # measurement     = casadi.vertcat(T_c_t, w_c_t)
-        measurement     = casadi.vertcat(T, w)
+        measurement     = casadi.vertcat(T_c_t, w_c_t)
         sqrt_info       = np.eye(6) / 1e-2 # noise of 1 cm ; 0.01 rad
 
         lmk_idx = find_index(landmarks, lmk_id)
@@ -290,10 +292,8 @@ while(t <= 25):
         else: # not found: new landmark
             print('Landmark #', lmk_id, 'not found in map')
             # lmk pose in world coordinates
-            # lmk_p = kf_p + kf_R @ T_c_t
-            # lmk_R = kf_R @ R_c_t
-            lmk_p = kf_p + kf_R @ T
-            lmk_R = kf_R @ R
+            lmk_p = kf_p + kf_R @ T_c_t
+            lmk_R = kf_R @ R_c_t
             lmk_w = pin.log3(lmk_R)
 
             # construct and append new lmk
