@@ -14,10 +14,8 @@ from gslam_april_tools import *
 
 
 #-----------------------------------------------------------------------------------
-# METHODS
+# COST FUNCTIONS
 #-----------------------------------------------------------------------------------
-
-# cost functions
 
 # motion -- constant position
 def cost_constant_position(sqrt_info, keyframe_i, keyframe_j):
@@ -87,14 +85,13 @@ def computeTotalCost(factors, keyframes, landmarks):
 # PROBLEM DATA
 #-----------------------------------------------------------------------------------
 
-# camera, detector, and image files
+# camera and image files
 K           = np.array([[   419.53, 0.0,    427.88  ], 
                         [   0.0,    419.53, 241.32  ], 
                         [   0.0,    0.0,    1.0     ]])
-detector    = apriltag.Detector()
 file_tmp    = './data/visual_odom_laas_corridor/short2/frame{num:04d}.jpg'
 
-# AprilTag definitions
+# AprilTag specifications
 tag_family  = 'tag36h11'
 tag_size    = 0.168
 tag_corners = tag_size / 2 * np.array([[-1,1,0],[1,1,0],[1,-1,0],[-1,-1,0]])
@@ -102,6 +99,13 @@ tag_corners = tag_size / 2 * np.array([[-1,1,0],[1,1,0],[1,-1,0],[-1,-1,0]])
 # initial conditions
 initial_position    = np.array([0,0,0])
 initial_orientation = np.array([0,0,0])
+
+#-----------------------------------------------------------------------------------
+# INIT THE PROBLEM
+#-----------------------------------------------------------------------------------
+
+# AprilTag detector
+detector    = apriltag.Detector()
 
 # Create the casadi optimization problem
 opti = casadi.Opti()
@@ -111,20 +115,15 @@ opti.solver("ipopt", opts)
 # Display
 viz = MeshcatVisualizer()
 
-
-#-----------------------------------------------------------------------------------
-# INIT THE PROBLEM
-#-----------------------------------------------------------------------------------
-
 # time and ID counters
 t       = 0
 kf_id   = 0
 fac_id  = 0
 
-# init object lists
-factors   = dict()
+# object dictionaries
 keyframes = dict()
 landmarks = dict()
+factors   = dict()
 
 #-----------------------------------------------------------------------------------
 # TEMPORAL LOOP
@@ -133,6 +132,7 @@ landmarks = dict()
 # process all images in the sequence
 first_time = True
 while(t <= 25):
+
     # read one image
     filename = file_tmp.format(num=t)
     print('reading image file:', filename)
@@ -147,9 +147,13 @@ while(t <= 25):
     # make KF for new image
     if first_time: # first time, make new KF, set initial pose and prior factor
         first_time = False
+        # new KF
         keyframe = OptiVariablePose3(opti, kf_id, initial_position, initial_orientation)
         keyframes[kf_id] = keyframe
-        factors[fac_id] = Factor("prior", fac_id, kf_id, 0, np.array([0,0,0, 0,0,0]), 1e4 * np.eye(6))
+        # prior factor
+        measurement = casadi.vertcat(initial_position, initial_orientation)
+        sqrt_info   = 1e4 * np.eye(6)
+        factors[fac_id] = Factor("prior", fac_id, kf_id, 0, measurement, sqrt_info)
 
         # store KF values for later
         kf_p = initial_position
@@ -172,7 +176,9 @@ while(t <= 25):
 
         # add a constant_position factor between both KF
         fac_id += 1
-        factor = Factor('motion', fac_id, kf_last_id, kf_id, np.zeros([6,1]), np.eye(6) / 1e3)
+        measurement = np.zeros([6,1]) # no motion
+        sqrt_info   = np.eye(6) / 1e3 # 1000m, 1000rad, uncertainty of motion
+        factor      = Factor('motion', fac_id, kf_last_id, kf_id, measurement, sqrt_info)
         factors[fac_id] = factor
 
         # store KF values for later
@@ -191,13 +197,17 @@ while(t <= 25):
         # compute pose of tag wrt camera
         T_c_t, R_c_t, w_c_t = poseFromCorners(tag_corners, detected_corners, K, np.array([]))
 
-        measurement     = casadi.vertcat(T_c_t, w_c_t)
-        sqrt_info       = np.eye(6) / 1e-2 # noise of 1 cm ; 0.01 rad
+        # build measurement vector and sqrt info matrix
+        measurement = casadi.vertcat(T_c_t, w_c_t)
+        sqrt_info   = np.eye(6) / 1e-2 # noise of 1 cm ; 0.01 rad
 
-        # some tests
+        # print some quality metrics
+        print('detection hamming  = ', detection.hamming)
+        print('detection goodness = ', detection.goodness)
+        print('decision margin    = ', detection.decision_margin)
         projected_corners = cv2.projectPoints(tag_corners, R_c_t, T_c_t, K, np.array([]))
-        # print(detected_corners)
-        # print(projected_corners)
+        projected_corners   = np.reshape(projected_corners[0],[4,2])  # fix weird format from opencv
+        print('reproj. error      = ', reprojectionError(projected_corners, detected_corners))
     
         if lmk_id in landmarks: # found: known landmark: only add factor
             print('Landmark #', lmk_id, 'found in graph')
