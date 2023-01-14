@@ -151,6 +151,11 @@ while(t <= 25):
         keyframes[kf_id] = keyframe
         factors[fac_id] = Factor("prior", fac_id, kf_id, 0, np.array([0,0,0, 0,0,0]), 1e4 * np.eye(6))
 
+        # store KF values for later
+        kf_p = initial_position
+        kf_w = initial_orientation
+        kf_R = pin.exp3(kf_w)
+
     else: # other times, make new KF, add factor to last KF
         # we implement a constant-position motion model
         # so we make new KF at same position than last KF
@@ -171,16 +176,10 @@ while(t <= 25):
         factor = Factor('motion', fac_id, kf_last_id, kf_new_id, np.zeros([6,1]), np.eye(6) / 1e3)
         factors[fac_id] = factor
 
-    # optimize!
-    # solve so that opti.values(...) work
-    totalcost = computeTotalCost(factors, keyframes, landmarks)
-    opti.minimize(totalcost)
-    sol = opti.solve()
-
-    # extract keyframe values
-    kf_p = opti.value(keyframe.position)
-    kf_w = opti.value(keyframe.anglevector)
-    kf_R = pin.exp3(kf_w)
+        # store KF values for later
+        kf_p = kf_last_pos
+        kf_w = kf_last_ori
+        kf_R = pin.exp3(kf_w)
 
     # process image detections
     detections   = detector.detect(image)
