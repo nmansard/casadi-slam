@@ -167,13 +167,12 @@ while(t <= 25):
 
         # make new KF
         kf_id += 1
-        kf_new_id = kf_id
-        keyframe = OptiVariablePose3(opti, kf_new_id, kf_last_pos, kf_last_ori)
+        keyframe = OptiVariablePose3(opti, kf_id, kf_last_pos, kf_last_ori)
         keyframes[kf_id] = keyframe
 
         # add a constant_position factor between both KF
         fac_id += 1
-        factor = Factor('motion', fac_id, kf_last_id, kf_new_id, np.zeros([6,1]), np.eye(6) / 1e3)
+        factor = Factor('motion', fac_id, kf_last_id, kf_id, np.zeros([6,1]), np.eye(6) / 1e3)
         factors[fac_id] = factor
 
         # store KF values for later
