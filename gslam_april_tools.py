@@ -82,12 +82,21 @@ def invertPose(T, R):
     wi = pin.log3(Ri)
     return Ti, Ri, wi
 
+# compose two poses (non casadi)
+# given transforms A-B and B-C, obtain A-C
 def composePoses(T_a_b, R_a_b, T_b_c, R_b_c):
     T_a_c = T_a_b + R_a_b @ T_b_c
     R_a_c = R_a_b @ R_b_c      
     w_a_c = pin.log(R_a_c)
     return T_a_c, R_a_c, w_a_c
-    
+
+# between two poses (non casadi)
+# given transforms A-B and A-C, obtain B-C
+def betweenPoses(T_a_b, R_a_b, T_a_c, R_a_c):
+    T_b_a, R_b_a        = invertPose(T_a_b, R_a_b)
+    T_b_c, R_b_c, w_b_c = composePoses(T_b_a, R_b_a, T_a_c, R_a_c)
+    return T_b_c, R_b_c, w_b_c
+
 # Draw all lobjects
 def drawAll(opti, keyframes, landmarks, factors, viz):
     '''
