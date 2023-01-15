@@ -81,6 +81,12 @@ def invertPose(T, R):
     Ti = - Ri @ T
     wi = pin.log3(Ri)
     return Ti, Ri, wi
+
+def composePoses(T_a_b, R_a_b, T_b_c, R_b_c):
+    T_a_c = T_a_b + R_a_b @ T_b_c
+    R_a_c = R_a_b @ R_b_c      
+    w_a_c = pin.log(R_a_c)
+    return T_a_c, R_a_c, w_a_c
     
 # Draw all lobjects
 def drawAll(opti, keyframes, landmarks, factors, viz):
@@ -107,7 +113,7 @@ def drawAll(opti, keyframes, landmarks, factors, viz):
         kf_M = pin.SE3(pin.exp3(kf_w),kf_p)
 
         kid = f"kf_{keyframe.id:4}"
-        viz.addBox(kid, [0.05, 0.05, 0.1], [0.1, 0.1, 0.8, 0.3])
+        viz.addBox(kid, [0.07, 0.05, 0.025], [0.1, 0.1, 0.8, 0.3])
         viz.applyConfiguration(kid,kf_M)
 
     # for f_id in factors:
