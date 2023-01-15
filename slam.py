@@ -118,9 +118,10 @@ opti.solver("ipopt", opts)
 viz = MeshcatVisualizer()
 
 # time and ID counters
-t       = 0
-kf_id   = 0
-fac_id  = 0
+t        = 0
+t_period = 2
+kf_id    = 0
+fac_id   = 0
 
 # object dictionaries
 keyframes = dict()
@@ -128,16 +129,23 @@ landmarks = dict()
 factors   = dict()
 
 #-----------------------------------------------------------------------------------
+# ALGORITHM OPTIONS
+#-----------------------------------------------------------------------------------
+
+# select a prior on landmark, or on keyframe, {'keyframe', 'landmark'}
+prior_mode            = 'landmark'
+
+# print AprilTag detection quality metrics
+print_detection_metrics = False
+
+#-----------------------------------------------------------------------------------
 # TEMPORAL LOOP
 #-----------------------------------------------------------------------------------
 
 # process all images in the sequence
-first_time   = True
-prior_set    = False
-prior_on_lmk = True
-print_metrics = False
+prior_is_set    = False
 
-while(t <= 25):
+while(t <= 250):
 
     # read one image
     filename = file_tmp.format(num=t)
@@ -151,8 +159,8 @@ while(t <= 25):
 
     
     # add keyframe for this image only if prior is already set
-    # if not, KF will be added later depending on the prior strategy
-    if prior_set:
+    # if prior is not yet, the KF will be added later on depending on the prior strategy 'prior_on_lmk'
+    if prior_is_set:
         # we implement a constant-position motion model
         # so we make new KF at same position than last KF
 
@@ -166,7 +174,7 @@ while(t <= 25):
         kf_id += 1
         keyframe = OptiVariablePose3(opti, kf_id, kf_last_pos, kf_last_ori)
         keyframes[kf_id] = keyframe
-        print('Keyframe #', kf_id, '   appended to graph')
+        print('Keyframe #', kf_id, '   added to graph')
 
         # add a constant_position factor between last and new KFs
         fac_id += 1
@@ -174,7 +182,7 @@ while(t <= 25):
         sqrt_info   = np.eye(6) / 1e3 # 1000m, 1000rad, uncertainty of motion
         factor      = Factor('motion', fac_id, kf_last_id, kf_id, measurement, sqrt_info)
         factors[fac_id] = factor
-        print('Factor   #', fac_id, '   appended to graph. kf', kf_last_id, 'kf', kf_id)
+        print('Factor   #', fac_id, '   added to graph. Type motion: kf', kf_last_id, '-- kf', kf_id)
 
         # store KF values for later
         kf_p = kf_last_pos
@@ -194,7 +202,7 @@ while(t <= 25):
         T_c_t, R_c_t, w_c_t = poseFromCorners(tag_corners, detected_corners, K, np.array([]))
 
         # print some quality metrics
-        if print_metrics:
+        if print_detection_metrics:
             print('detection hamming  = ', detection.hamming)
             print('detection goodness = ', detection.goodness)
             print('decision margin    = ', detection.decision_margin)
@@ -203,21 +211,38 @@ while(t <= 25):
             print('reproj. error      = ', reprojectionError(projected_corners, detected_corners))
 
         # set the prior if it is not set
-        if not prior_set:
+        if not prior_is_set:
 
-            if prior_on_lmk:  # prior on landmark
+            if prior_mode == 'keyframe':    # prior on keyframe
+
+                # new KF as specified by initial pose
+                keyframe = OptiVariablePose3(opti, kf_id, initial_position, initial_orientation)
+                keyframes[kf_id] = keyframe
+                print('Keyframe #', kf_id, '   added to graph')
+
+                # prior keyframe factor
+                measurement = casadi.vertcat(initial_position, initial_orientation)
+                sqrt_info   = 1e4 * np.eye(6)
+                factors[fac_id] = Factor("prior_keyframe", fac_id, kf_id, 0, measurement, sqrt_info)
+                print('Factor   #', fac_id, '   added to graph. Type prior_keyframe: kf', kf_id)
+
+                # store KF values for later
+                kf_p = initial_position
+                kf_w = initial_orientation
+                kf_R = pin.exp3(kf_w)
+            
+            elif prior_mode == 'landmark':  # prior on landmark
 
                 # new lmk as specified by initial pose
                 landmark = OptiVariablePose3(opti, lmk_id, initial_position, initial_orientation)
                 landmarks[lmk_id] = landmark
-                print('Landmark #', lmk_id, '   appended to graph')
+                print('Landmark #', lmk_id, '   added to graph')
 
                 # prior landmark factor
                 measurement = casadi.vertcat(initial_position, initial_orientation)
                 sqrt_info   = 1e4 * np.eye(6)
                 factors[fac_id] = Factor("prior_landmark", fac_id, lmk_id, 0, measurement, sqrt_info)
-                print('Factor   #', fac_id, '   appended to graph. lmk', lmk_id)
-
+                print('Factor   #', fac_id, '   added to graph. Type prior_landmark: lmk', lmk_id)
                 
                 # copute first kf pos and ori
                 T_t = initial_position                               # tag frame
@@ -228,32 +253,17 @@ while(t <= 25):
                 # make first kf
                 keyframe = OptiVariablePose3(opti, kf_id, T_c, w_c)
                 keyframes[kf_id] = keyframe
-                print('Keyframe #', kf_id, '   appended to graph')
+                print('Keyframe #', kf_id, '   added to graph')
 
                 # store KF values for later
                 kf_p = T_c
                 kf_w = w_c
                 kf_R = R_c
 
-            else:    # prior on keyframe
+            else:
+                print('Error: prior_mode not recognized!')
 
-                # new KF as specified by initial pose
-                keyframe = OptiVariablePose3(opti, kf_id, initial_position, initial_orientation)
-                keyframes[kf_id] = keyframe
-                print('Keyframe #', kf_id, '   appended to graph')
-
-                # prior keyframe factor
-                measurement = casadi.vertcat(initial_position, initial_orientation)
-                sqrt_info   = 1e4 * np.eye(6)
-                factors[fac_id] = Factor("prior_keyframe", fac_id, kf_id, 0, measurement, sqrt_info)
-                print('Factor   #', fac_id, '   appended to graph. kf', kf_id)
-
-                # store KF values for later
-                kf_p = initial_position
-                kf_w = initial_orientation
-                kf_R = pin.exp3(kf_w)
-
-            prior_set = True
+            prior_is_set = True
 
             
         # build measurement vector and sqrt info matrix
@@ -273,12 +283,12 @@ while(t <= 25):
             # construct and append new lmk
             landmark = OptiVariablePose3(opti, lmk_id, lmk_p, lmk_w)
             landmarks[lmk_id] = landmark
-            print('Landmark #', lmk_id, '   appended to graph')
+            print('Landmark #', lmk_id, '   added to graph')
 
         # construct and append new factor
         fac_id += 1
         factors[fac_id] = Factor('landmark', fac_id, kf_id, lmk_id, measurement, sqrt_info)
-        print('Factor   #', fac_id, '   appended to graph. kf', kf_id, 'lmk', lmk_id)
+        print('Factor   #', fac_id, '   added to graph. Type landmark: kf', kf_id, '-- lmk', lmk_id)
 
 
     # optimize!
@@ -292,12 +302,13 @@ while(t <= 25):
     print('-----------------------------------')
 
     # advance time
-    t += 1
+    t += t_period
 
 ###############################################################################################
     
 # print results
 print()
+print('Optimized SLAM map -- landmarks and keyframes')
 for lid in landmarks:
     landmark = landmarks[lid]
     lmk_p = opti.value(landmark.position)
