@@ -93,7 +93,7 @@ def composePoses(T_a_b, R_a_b, T_b_c, R_b_c):
 # between two poses (non casadi)
 # given transforms A-B and A-C, obtain B-C
 def betweenPoses(T_a_b, R_a_b, T_a_c, R_a_c):
-    T_b_a, R_b_a        = invertPose(T_a_b, R_a_b)
+    T_b_a, R_b_a, _     = invertPose(T_a_b, R_a_b)
     T_b_c, R_b_c, w_b_c = composePoses(T_b_a, R_b_a, T_a_c, R_a_c)
     return T_b_c, R_b_c, w_b_c
 
