@@ -70,7 +70,7 @@ def testCostFunctions():
     #
     #  Factor graph to solve:
     #
-    #   *----------O--------------O   
+    #   *----------O-------*-------O   
     #
     #   prior     KF1  cst.pos.  KF2
     #
@@ -91,7 +91,7 @@ def testCostFunctions():
     #
     #  Factor graph to solve:
     #
-    #   *----------O--------------O   
+    #   *----------O-------*-------O   
     #
     #   prior     KF1  landmark  LMK
     #
