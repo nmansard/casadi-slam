@@ -87,7 +87,7 @@ def invertPose(T, R):
 def composePoses(T_a_b, R_a_b, T_b_c, R_b_c):
     T_a_c = T_a_b + R_a_b @ T_b_c
     R_a_c = R_a_b @ R_b_c      
-    w_a_c = pin.log(R_a_c)
+    w_a_c = pin.log3(R_a_c)
     return T_a_c, R_a_c, w_a_c
 
 # between two poses (non casadi)
